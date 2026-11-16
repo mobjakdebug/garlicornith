@@ -234,10 +234,10 @@ class GGUF:
         if len(t.shape) != 2:
             raise ValueError(f"{name}: not 2-D")
         rows, cols = t.shape
-        if not self.r.remote and t.block_elems == 1:      # plain floats: a row range is a byte range
+        if t.type_id in (0, 1, 30):                       # F32, F16, BF16: a row range is a byte range
             per = cols * t.block_bytes
-            return np.frombuffer(self.r.read(self.data_offset + t.offset + r0 * per, (r1 - r0) * per),
-                                 dtype=np.float32 if t.type_id == 0 else np.float16).reshape(r1 - r0, cols)
+            raw = self.r.read(self.data_offset + t.offset + r0 * per, (r1 - r0) * per)
+            return dequantize(raw, t.type_id, (r1 - r0) * cols).reshape(r1 - r0, cols)
         return self.tensor(name)[r0:r1]                   # quantized blocks mix rows: take the whole tensor
 
     def token_list(self, key="tokenizer.ggml.tokens"):

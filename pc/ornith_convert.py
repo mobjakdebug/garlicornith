@@ -727,8 +727,8 @@ def inspect(src, probe_mtp=True):
     keep = np.load(KEEP)
     print(f"keep list: {len(keep)} ids, {int(keep.min())}..{int(keep.max())}, {len(np.unique(keep))} unique")
     # ---- the MTP head: llama.cpp keeps it after the model's layers, as blk.<last>.* plus its nextn.* tensors
-    in_gguf = [n for n in g.tensors if n.lower().startswith(("nextn", "mtp"))]
-    print(f"\nMTP head in the GGUF: {sorted(in_gguf) if in_gguf else 'no'}")
+    in_gguf = [n for n in g.tensors if "nextn" in n]
+    print(f"\nMTP head in the GGUF: {len(in_gguf)} nextn tensors" if in_gguf else "\nMTP head in the GGUF: no")
     if m.mtp_block is not None:
         print(f"  its block, blk.{m.mtp_block}: " + ", ".join(sorted(
             n.split(".", 2)[2] for n in g.tensors if n.startswith(f"blk.{m.mtp_block}."))))
@@ -736,14 +736,15 @@ def inspect(src, probe_mtp=True):
         print("  no nextn_predict_layers: no speculative decoding")
     # ---- what the converter reads, against Hugging Face's checkpoint (the order of the delta rule's heads, the
     # norms' 1 + w, and a row of each kind of matrix): what catches a mistake before a 40-minute conversion
+    ok = True
     if probe_mtp:
         try:
             import ornith_check_layout
-            ornith_check_layout.report(g, 0)
+            ok = ornith_check_layout.report(g, 0)
         except (Exception, SystemExit) as ex:  # noqa: BLE001
             print(f"  cannot compare with {BASE_REPO}: {ex}")
     print(f"\ndone in {time.time() - t0:.0f} s; {g.r.n_read / 2**20:.1f} MiB read")
-    return 0
+    return 0 if ok else 1
 
 
 def names_report(src):

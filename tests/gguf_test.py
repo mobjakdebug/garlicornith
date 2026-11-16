@@ -74,6 +74,7 @@ def main():
         ref = np.frombuffer(bf.tobytes(), np.uint16).astype(np.uint32) << 16
         assert np.array_equal(got.reshape(-1), ref.view(np.float32)), "bf16 values"
         assert np.allclose(got, (a.astype(np.float32).view(np.uint32) & 0xFFFF0000).view(np.float32))
+        assert np.array_equal(g.rows("blk.0.ffn_up.weight", 2, 5), got[2:5]), "rows() reads bf16 as its own type"
         vec = g.tensor("some.vector")
         assert np.array_equal(vec, b), "f32 vector"
         assert g.header_bytes % 32 == 0
