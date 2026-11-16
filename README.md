@@ -21,8 +21,8 @@ Terminal-Bench 2.1, against 53.2 / 81.7 / 21.3 for Qwen3.5-9B on the same table 
 | `pc/gguf.py` | a GGUF reader with no dependencies beyond numpy (metadata, tensor table, dequantization of F32/F16/BF16/Q8_0/Q4_0/Q4_K/Q5_K/Q6_K, by byte range) |
 | `pc/ornith_check_layout.py` | compares the GGUF's tensors with Hugging Face's checkpoint: the order of the delta rule's value heads, the norms, a row of each matrix |
 | `pc/vocab_order.npy`, `chat/assets/tokenizer.bin` | the app's vocabulary and the lm_head keep list: Ornith's tokens and merges are identical to Qwen3.5's, so both are used unchanged |
-| `pc/ci_toolchain.py` | fetches the OpenOrbis PS4 toolchain and Zig for the build |
-| `.github/workflows/build.yml` | convert + compile + package, on GitHub Actions; publishes the package as an artifact |
+| `pc/ci_toolchain.py` | fetches the OpenOrbis PS4 toolchain, Zig and the OpenSSL 1.1 the package tool needs |
+| `.github/workflows/build.yml` | compile, convert and package as three jobs on GitHub Actions; publishes the package as a 4.9 GB artifact |
 | `.github/workflows/probe.yml` | cheap checks: what the GGUF holds, what the toolchain release holds |
 | `chat/`, `shaders/`, `build_chat.py`, … | Garlic LLM itself, unchanged except for the model's name and the package's files |
 
@@ -82,19 +82,42 @@ python pc/ornith_convert.py convert           # downloads the BF16 GGUF and writ
 python build_chat.py --full                   # build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
 ```
 
-On GitHub Actions: push a change to `ci/build` (or run **build-ornith-ps4** by hand). The workflow installs the
-toolchain and Zig, downloads the GGUF, converts it, compiles the app, builds the package and keeps:
+On GitHub Actions: push a change to `ci/build` (or run **build-ornith-ps4** by hand). The workflow is three jobs,
+so that a failure is quick to place and cheap to repeat:
 
-* `garlic-ornith-ps4-pkg` — the all-in-one package (~5.5 GB, the model inside)
-* `garlic-ornith-ps4-model` — the weight files and the two indexes, for an app-only package with the weights in `/data`
-* `logs` — the conversion, build and inspection output
+| Job | What it does | Needs the model? |
+| --- | --- | --- |
+| `compile` | toolchain + Zig, then `python build_chat.py --no-package`: proves the C builds and the fake-SELF comes out | no |
+| `convert` | downloads the GGUF, `inspect`s it, converts it (the result is kept in the Actions cache, keyed on the converter) | it downloads it |
+| `package` | `python build_chat.py --full`: the all-in-one package | takes the converted files from the artifact |
 
-Each run also writes its logs into `ci/last-run/<utc>-<job>/` on the branch, because artifacts are not always
-reachable from everywhere.
+It keeps:
 
-`--quant` / the workflow's `quant` input picks another file of the GGUF repository (`bf16`, `q8_0`, `q6_k`, `q5_k_m`,
-`q4_k_m`); BF16 is the default because the console's own formats then lose the least. A `q4_k_m` run needs a fifth of
-the bandwidth and about a third of the disk.
+* **`garlic-ornith-ps4-pkg`** — the all-in-one package, `IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg`, about 4.9 GB,
+  the weights inside. This is the deliverable; download it from the run's page.
+* `ornith-model` — the converted weights and the two indexes, for an app-only package with the weights in `/data`
+* `compile-logs`, `convert-logs`, `package-logs` — what each job printed
+
+Each job also writes its log into `ci/last-run/<utc>-<job>/` on the branch, because the artifact and log endpoints
+of Actions are not reachable from every environment (and a log that must be read twice is worth having in git).
+
+A run takes about 25 minutes the first time (18 GB of GGUF to download and convert) and about 8 after that, when the
+converted model comes back from the cache. `quant` (workflow input) picks another file of the GGUF repository
+(`bf16`, `q8_0`, `q6_k`, `q5_k_m`, `q4_k_m`); BF16 is the default because the console's own formats then lose the
+least. A `q4_k_m` run needs a fifth of the bandwidth and about a third of the disk.
+
+Two things the Linux runners needed, both in the scripts:
+
+* **`PkgTool.Core` is a self-contained .NET Core 3.0 binary**, so its crypto layer looks for `libssl.so.1.1`, which
+  no distribution newer than Ubuntu 22.04 ships (they have 3.x). Its `sfo_*` commands work without it; `pkg_build`
+  dies with `SIGABRT` and *no message at all*. `pc/ci_toolchain.py` takes the library out of a distribution package
+  into `toolchain/libssl1.1/`, and `build.py` puts it in `LD_LIBRARY_PATH`; `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`
+  covers the other half of the same problem (no ICU).
+* The logs are pushed back with `permissions: contents: write`; without it the push is refused and the step still
+  says "success".
+
+`python tests/gguf_test.py` and `python tests/ornith_layout_test.py` check the reader and the two weight layouts
+(the q4s/q3s round trip and the value-head order) without the model, and the `compile` job runs them.
 
 ## Installing
 
