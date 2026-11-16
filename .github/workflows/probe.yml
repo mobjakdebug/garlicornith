@@ -1,14 +1,15 @@
 name: probe
 
 # Cheap checks, on demand: what a GGUF of Ornith-1.5-9B holds, and what the OpenOrbis toolchain release contains.
-# Nothing here is built. Push a change to ci/probe (or run the workflow) to see the reports.
-permissions:
-  contents: write
-
+# Nothing here is built. Push a change to ci/probe (or run the workflow by hand) and read the reports in
+# ci/last-run/<utc>-<job>/ in this branch (the run publishes them itself).
 on:
   push:
     paths: ["ci/probe"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   gguf:
@@ -27,17 +28,30 @@ jobs:
         run: |
           set -o pipefail
           python pc/ornith_convert.py inspect 2>&1 | tee inspect.txt
-          {
-            echo '### Ornith-1.5-9B GGUF'
-            echo '```'
-            cat inspect.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gguf-inspect
-          path: inspect.txt
+          path: "*.txt"
+      - name: publish the logs to the branch
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -e
+          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-${{ github.job }}"
+          mkdir -p "$d"
+          for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "$d"
+          git diff --cached --quiet && exit 0
+          git commit -q -m "ci: logs of ${{ github.workflow }} ${{ github.run_id }} (${{ github.job }})"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH" || true
+            git rebase -q "origin/$BRANCH" 2>/dev/null || git rebase --abort 2>/dev/null || true
+            git push -q origin "HEAD:$BRANCH" && break || sleep 10
+          done
 
   toolchain:
     name: OpenOrbis toolchain and Zig
@@ -55,22 +69,20 @@ jobs:
       - name: what is there
         run: |
           python pc/ci_toolchain.py --probe 2>&1 | tee probe.txt || true
-          echo "--- toolchain tree (2 levels) ---" | tee -a probe.txt
-          ls -la toolchain toolchain/OpenOrbis toolchain/OpenOrbis/PS4Toolchain 2>&1 | tee -a probe.txt || true
-          echo "--- lib and include ---" | tee -a probe.txt
-          ls toolchain/OpenOrbis/PS4Toolchain/lib toolchain/OpenOrbis/PS4Toolchain/include 2>&1 | head -30 | tee -a probe.txt || true
+          echo "--- lib ---" | tee -a probe.txt
+          ls toolchain/OpenOrbis/PS4Toolchain/lib 2>&1 | head -40 | tee -a probe.txt || true
           echo "--- zig ---" | tee -a probe.txt
           ./toolchain/zig/zig version 2>&1 | tee -a probe.txt || true
-          { echo '### toolchain'; echo '```'; cat probe.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          ./toolchain/zig/zig cc -target x86_64-freebsd-none -O2 -c -x c -o /tmp/t.o - <<<"int f(void){return 3;}" \
+            && echo "zig cc: x86_64-freebsd-none works" | tee -a probe.txt
+          ./toolchain/zig/zig ld.lld --version 2>&1 | tee -a probe.txt || true
+          ./toolchain/OpenOrbis/PS4Toolchain/bin/linux/PkgTool.Core 2>&1 | head -5 | tee -a probe.txt || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: toolchain-probe
-          path: probe.txt
-
+          path: "*.txt"
       - name: publish the logs to the branch
-        # Artifacts and logs are behind hosts this sandbox cannot reach, so a run leaves its output in the branch:
-        # ci/last-run/<utc>-<job>/. Events pushed by GITHUB_TOKEN do not start another run.
         if: always()
         env:
           BRANCH: ${{ github.ref_name }}
@@ -79,7 +91,6 @@ jobs:
           d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-${{ github.job }}"
           mkdir -p "$d"
           for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
-          ls -l "$d"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f "$d"
@@ -88,5 +99,5 @@ jobs:
           for i in 1 2 3 4 5; do
             git fetch -q origin "$BRANCH" || true
             git rebase -q "origin/$BRANCH" 2>/dev/null || git rebase --abort 2>/dev/null || true
-            git push -q origin "HEAD:$BRANCH" && break || sleep 5
+            git push -q origin "HEAD:$BRANCH" && break || sleep 10
           done
