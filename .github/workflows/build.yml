@@ -8,6 +8,9 @@ name: build-ornith-ps4
 #   4. keep the package, the indexes and the logs as artifacts
 #
 # Push a change to ci/build, or run the workflow by hand (it takes what the inputs say).
+permissions:
+  contents: write
+
 on:
   push:
     paths: ["ci/build"]
@@ -150,3 +153,26 @@ jobs:
             build.txt
             summary.txt
           if-no-files-found: ignore
+
+      - name: publish the logs to the branch
+        # Artifacts and logs are behind hosts this sandbox cannot reach, so a run leaves its output in the branch:
+        # ci/last-run/<utc>-<job>/. Events pushed by GITHUB_TOKEN do not start another run.
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -e
+          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-${{ github.job }}"
+          mkdir -p "$d"
+          for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
+          ls -l "$d"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "$d"
+          git diff --cached --quiet && exit 0
+          git commit -q -m "ci: logs of ${{ github.workflow }} ${{ github.run_id }} (${{ github.job }})"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH" || true
+            git rebase -q "origin/$BRANCH" 2>/dev/null || git rebase --abort 2>/dev/null || true
+            git push -q origin "HEAD:$BRANCH" && break || sleep 5
+          done
