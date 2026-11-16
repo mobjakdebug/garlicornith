@@ -1,0 +1,135 @@
+source: https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF/resolve/main/Ornith-1.5-9B-BF16.gguf
+read: 28.0 MiB (the header, not the weights) in 2.4 s
+architecture=qwen35 name=Ornith-1.5-9B quant=32 tensors=442
+vocab=248320 layers=32 hidden=4096 inter=12288 heads=16 kv=4 head_dim=256 eps=1e-06 rope_theta=1e+07
+delta net: key heads=16 value heads=32 key dim=128 value dim=128 conv=4
+layer kinds: {'full_attention': 8, 'linear_attention': 24}
+  qwen35.block_count = 33
+  qwen35.nextn_predict_layers = 1
+  qwen35.full_attention_interval = 4
+  qwen35.context_length = 262144
+  qwen35.rope.dimension_count = 64
+  qwen35.rope.dimension_sections = [11, 11, 10, 0]
+  qwen35.ssm.inner_size = 4096
+  qwen35.ssm.group_count = 16
+  qwen35.ssm.time_step_rank = 32
+  qwen35.attention.value_length = 256
+  tokenizer.ggml.pre = qwen35
+  tokenizer.ggml.eos_token_id = 248046
+  tokenizer.ggml.padding_token_id = 248044
+  general.file_type = 32
+  general.size_label = 9B
+metadata keys: general.architecture, general.basename, general.file_type, general.license, general.license.link, general.name, general.quantization_version, general.size_label, general.tags, general.type, qwen35.attention.head_count, qwen35.attention.head_count_kv, qwen35.attention.key_length, qwen35.attention.layer_norm_rms_epsilon, qwen35.attention.value_length, qwen35.block_count, qwen35.context_length, qwen35.embedding_length, qwen35.feed_forward_length, qwen35.full_attention_interval, qwen35.nextn_predict_layers, qwen35.rope.dimension_count, qwen35.rope.dimension_sections, qwen35.rope.freq_base, qwen35.ssm.conv_kernel, qwen35.ssm.group_count, qwen35.ssm.inner_size, qwen35.ssm.state_size, qwen35.ssm.time_step_rank, tokenizer.chat_template, tokenizer.ggml.add_bos_token, tokenizer.ggml.eos_token_id, tokenizer.ggml.merges, tokenizer.ggml.model, tokenizer.ggml.padding_token_id, tokenizer.ggml.pre, tokenizer.ggml.token_type, tokenizer.ggml.tokens
+
+layer 0 (linear_attention):
+    attn_norm blk.0.attn_norm.weight                     (4096,)
+    mlp_norm  blk.0.post_attention_norm.weight           (4096,)
+    in_qkv    blk.0.attn_qkv.weight                      (8192, 4096)
+    in_z      blk.0.attn_gate.weight                     (4096, 4096)
+    in_b      blk.0.ssm_beta.weight                      (32, 4096)
+    in_a      blk.0.ssm_alpha.weight                     (32, 4096)
+    conv      blk.0.ssm_conv1d.weight                    (8192, 4)
+    A         blk.0.ssm_a                                (32,)
+    dt        blk.0.ssm_dt.bias                          (32,)
+    gnorm     blk.0.ssm_norm.weight                      (128,)
+    wout      blk.0.ssm_out.weight                       (4096, 4096)
+    gu_gate   blk.0.ffn_gate.weight                      (12288, 4096)
+    gu_up     blk.0.ffn_up.weight                        (12288, 4096)
+    down      blk.0.ffn_down.weight                      (4096, 12288)
+    -> w_in (12352, 4096), conv (8192, 4), A (32,)
+
+layer 3 (full_attention):
+    attn_norm blk.3.attn_norm.weight                     (4096,)
+    mlp_norm  blk.3.post_attention_norm.weight           (4096,)
+    q_norm    blk.3.attn_q_norm.weight                   (256,)
+    k_norm    blk.3.attn_k_norm.weight                   (256,)
+    o         blk.3.attn_output.weight                   (4096, 4096)
+    gu_gate   blk.3.ffn_gate.weight                      (12288, 4096)
+    gu_up     blk.3.ffn_up.weight                        (12288, 4096)
+    down      blk.3.ffn_down.weight                      (4096, 12288)
+    q         blk.3.attn_q.weight                        (8192, 4096)
+    k         blk.3.attn_k.weight                        (1024, 4096)
+    v         blk.3.attn_v.weight                        (1024, 4096)
+    -> wqkv (10240, 4096)
+
+the app's kernel shapes: layers 32, hidden 4096, inter 12288, heads 16, kv 4, head_dim 256, key heads 16, value heads 32, key dim 128, value dim 128
+tensors by type: BF16 258 (17.13 GiB), F32 184 (0.00 GiB)
+
+tokenizer.bin: 248070 tokens, 247587 merges
+GGUF: 248320 tokens, 247587 merges
+  the GGUF has 250 ids past the app's vocabulary (unused: the keep list stops at 248070)
+  all 248070 tokens hold the same bytes as the app's tokenizer.bin
+  all 247587 merges in the same rank order
+  special ids: </think>=248069, <think>=248068, <|endoftext|>=248044, <|im_end|>=248046, <|im_start|>=248045, <|image_pad|>=248056, <|vision_start|>=248053
+  NOTE: 33 control/user-defined tokens in the GGUF, 26 special in the app's
+  => the app's tokenizer.bin and keep list can be used as they are
+keep list: 248070 ids, 0..248069, 248070 unique
+
+MTP head in the GGUF: no
+  its block, blk.32: attn_k.weight, attn_k_norm.weight, attn_norm.weight, attn_output.weight, attn_q.weight, attn_q_norm.weight, attn_v.weight, ffn_down.weight, ffn_gate.weight, ffn_up.weight, nextn.eh_proj.weight, nextn.enorm.weight, nextn.hnorm.weight, nextn.shared_head_norm.weight, post_attention_norm.weight
+
+the GGUF against Hugging Face's checkpoint (first rows):
+  token_embd.weight                  vs model.language_model.embed_tokens.weight   same
+  output_norm.weight                 vs model.language_model.norm.weight           DIFFERENT
+      gguf [2.25     2.109375 2.234375 2.25    ] (4,)
+      hf   [1.25     1.109375 1.234375 1.25    ] (4096,)
+  output.weight                      vs lm_head.weight                             same
+  blk.0.attn_norm.weight             vs model.language_model.layers.0.input_layernorm.weight DIFFERENT
+      gguf [1.1386719  1.0825195  0.99554443 1.0500488 ] (4,)
+      hf   [ 0.13867188  0.08251953 -0.00445557  0.05004883] (4096,)
+  blk.0.post_attention_norm.weight   vs model.language_model.layers.0.post_attention_layernorm.weight DIFFERENT
+      gguf [0.8232422  0.85253906 0.9326172  0.8691406 ] (4,)
+      hf   [-0.17675781 -0.14746094 -0.06738281 -0.13085938] (4096,)
+  blk.0.attn_qkv.weight              vs model.language_model.layers.0.linear_attn.in_proj_qkv.weight same
+  blk.0.attn_gate.weight             vs model.language_model.layers.0.linear_attn.in_proj_z.weight same
+  blk.0.ssm_beta.weight              vs model.language_model.layers.0.linear_attn.in_proj_b.weight DIFFERENT  (max |diff| 0.061035, diff - 1 = 1.05)
+      gguf [-0.0100708  -0.00830078  0.00201416  0.00035667] (4, 4096)
+      hf   [-0.0100708  -0.00830078  0.00201416  0.00035667] (4, 4096)
+  blk.0.ssm_alpha.weight             vs model.language_model.layers.0.linear_attn.in_proj_a.weight DIFFERENT  (max |diff| 0.14819, diff - 1 = 1.14)
+      gguf [-0.00320435  0.00488281 -0.07861328 -0.00588989] (4, 4096)
+      hf   [-0.00320435  0.00488281 -0.07861328 -0.00588989] (4, 4096)
+  blk.0.ssm_conv1d.weight            vs model.language_model.layers.0.linear_attn.conv1d.weight DIFFERENT
+      gguf [ 0.00125122  0.00059509 -0.00494385 -0.1015625 ] (4, 4)
+      hf   [ 0.00125122  0.00059509 -0.00494385 -0.1015625 ] (4,)
+  blk.0.ssm_out.weight               vs model.language_model.layers.0.linear_attn.out_proj.weight DIFFERENT  (max |diff| 0.11621, diff - 1 = 1.11)
+      gguf [ 0.02124023 -0.00196838 -0.01019287 -0.02172852] (4, 4096)
+      hf   [ 0.02124023 -0.00196838 -0.01019287 -0.02172852] (4, 4096)
+  blk.0.ffn_gate.weight              vs model.language_model.layers.0.mlp.gate_proj.weight same
+  blk.0.ffn_down.weight              vs model.language_model.layers.0.mlp.down_proj.weight same
+  blk.3.attn_q.weight                vs model.language_model.layers.3.self_attn.q_proj.weight same
+  blk.3.attn_k.weight                vs model.language_model.layers.3.self_attn.k_proj.weight same
+  blk.3.attn_output.weight           vs model.language_model.layers.3.self_attn.o_proj.weight same
+  blk.32.nextn.enorm.weight          vs mtp.pre_fc_norm_embedding.weight           DIFFERENT
+      gguf [0.47265625 0.42578125 0.66015625 0.375     ] (4,)
+      hf   [-0.52734375 -0.57421875 -0.33984375 -0.625     ] (4096,)
+  blk.32.nextn.hnorm.weight          vs mtp.pre_fc_norm_hidden.weight              DIFFERENT
+      gguf [0.7128906 0.8203125 0.6933594 0.7285156] (4,)
+      hf   [-0.28710938 -0.1796875  -0.30664062 -0.27148438] (4096,)
+  blk.32.nextn.eh_proj.weight        vs mtp.fc.weight                              same
+  blk.32.nextn.shared_head_norm.weight vs mtp.norm.weight                            DIFFERENT
+      gguf [2.6171875 2.4296875 2.578125  2.625    ] (4,)
+      hf   [1.6171875 1.4296875 1.578125  1.625    ] (4096,)
+  blk.32.attn_q.weight               vs mtp.layers.0.self_attn.q_proj.weight       same
+  blk.32.ffn_up.weight               vs mtp.layers.0.mlp.up_proj.weight            same
+  blk.0.ssm_norm.weight              vs model.language_model.layers.0.linear_attn.norm.weight DIFFERENT
+      gguf [0.8828125  0.9296875  0.91015625 0.86328125] (4,)
+      hf   [0.8828125  0.9296875  0.91015625 0.86328125] (128,)
+  blk.0.ssm_dt.bias                  vs model.language_model.layers.0.linear_attn.dt_bias DIFFERENT
+      gguf [-3.53125   -1.4453125 18.5        5.15625  ] (4,)
+      hf   [-3.53125   12.5       -1.4453125 -3.03125  ] (32,)
+  blk.3.attn_q_norm.weight           vs model.language_model.layers.3.self_attn.q_norm.weight DIFFERENT
+      gguf [1.3242188 1.4042969 1.3710938 1.3242188] (4,)
+      hf   [0.32421875 0.40429688 0.37109375 0.32421875] (256,)
+  blk.3.attn_k_norm.weight           vs model.language_model.layers.3.self_attn.k_norm.weight DIFFERENT
+      gguf [1.3886719 1.4023438 1.4003906 1.3613281] (4,)
+      hf   [0.38867188 0.40234375 0.40039062 0.36132812] (256,)
+  blk.3.post_attention_norm.weight   vs model.language_model.layers.3.post_attention_layernorm.weight DIFFERENT
+      gguf [0.9355469  0.84472656 0.9489746  0.9472656 ] (4,)
+      hf   [-0.06445312 -0.15527344 -0.05102539 -0.05273438] (4096,)
+  blk.0.ssm_a: gguf [-0.07131668 -0.00920968 -0.05730456 -0.03817307] (32); hf A_log [-2.640625 -2.515625 -4.6875   -4.21875 ] (32)
+    -exp(A_log) [-0.07131668 -0.08081239 -0.00920968 -0.01471703]
+    => A_log as it is
+  GGUF: 248320 tokens, 247587 merges
+  all 247587 merges in the same rank order
+
+done in 66 s; 4733.4 MiB read

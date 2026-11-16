@@ -1,0 +1,35 @@
+gguf ssm_a   [-0.07131668 -0.00920968 -0.05730456 -0.03817307 -0.01667658 -0.01720595]
+hf -exp(Alog)[-0.07131668 -0.08081239 -0.00920968 -0.01471703 -0.05730456 -0.02011579]
+permutation  [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
+  heads 16 x 2 read the other way: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
+  ssm_a == -exp(A_log) permuted: True
+  dt_bias the same permutation:  True
+
+ssm_beta.weight: (32, 4096) gguf, (32, 4096) hf
+  as it is: 93.6% of the values equal
+  rows permuted by perm: True
+  cols permuted in 128-blocks (32 of them): False
+
+ssm_alpha.weight: (32, 4096) gguf, (32, 4096) hf
+  as it is: 53.5% of the values equal
+  rows permuted by perm: True
+  cols permuted in 128-blocks (32 of them): False
+
+ssm_out.weight: (4096, 4096) gguf, (4096, 4096) hf
+  as it is: 69.8% of the values equal
+  rows permuted in 128-blocks (32 of them): False
+  cols permuted in 128-blocks (32 of them): True
+
+attn_gate.weight: (4096, 4096) gguf, (4096, 4096) hf
+  as it is: 63.6% of the values equal
+  rows permuted in 128-blocks (32 of them): True
+  cols permuted in 128-blocks (32 of them): False
+
+attn_qkv: (8192, 4096) gguf, (8192, 4096) hf; key rows 4096 (q and k), value rows 4096
+  q|k part as it is: True
+  v part with 128-blocks permuted: True
+  v part as it is: False
+
+ssm_conv1d: (8192, 4) gguf, (8192, 4) hf
+  as it is: False
+  channels 4096.. permuted in 128-blocks: True
