@@ -1,0 +1,15 @@
+https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF/resolve/main/Ornith-1.5-9B-BF16.gguf: layer 0: no tensor for mlp_norm, in_qkv, in_z; it has:
+  attn_gate.weight
+  attn_norm.weight
+  attn_qkv.weight
+  ffn_down.weight
+  ffn_gate.weight
+  ffn_up.weight
+  post_attention_norm.weight
+  ssm_a
+  ssm_alpha.weight
+  ssm_beta.weight
+  ssm_conv1d.weight
+  ssm_dt.bias
+  ssm_norm.weight
+  ssm_out.weight
