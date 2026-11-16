@@ -87,8 +87,11 @@ def compare(tok, gguf_tokens, gguf_merges, gguf_types):
     else:
         lines.append(f"  all {n} tokens hold the same bytes as the app's tokenizer.bin")
     if gguf_merges:
-        want = [b" ".join([tok.raw[a], tok.raw[b]]) for a, b, _m in tok.merges]
-        got = [m.encode("utf-8", "replace") if isinstance(m, str) else m for m in gguf_merges]
+        # the GGUF writes each merge as "a b" in the byte-to-unicode alphabet; the app's file has the token bytes
+        def as_str(x):
+            return "".join(enc[c] for c in x)
+        want = [(as_str(tok.raw[a]), as_str(tok.raw[b])) for a, b, _m in tok.merges]
+        got = [tuple(m.split(" ")) if isinstance(m, str) else tuple(x.decode() for x in m) for m in gguf_merges]
         same = [i for i in range(min(len(want), len(got))) if want[i] == got[i]]
         if len(got) != len(want) or len(same) != len(want):
             ok = False

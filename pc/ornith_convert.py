@@ -352,6 +352,32 @@ class Safetensors:
     def has(self, name):
         return name in self.index
 
+    def rows(self, name, r0=0, r1=4):
+        """Rows r0..r1 of a 2-D tensor (whole vectors), straight from its byte range."""
+        shard = self.index[name]
+        if shard not in self.headers:
+            n = struct.unpack("<Q", self._get(shard, "bytes=0-7"))[0]
+            self.headers[shard] = (8 + n, json.loads(self._get(shard, f"bytes=8-{8 + n - 1}")))
+        start, h = self.headers[shard]
+        e = h[name]
+        size = {"BF16": 2, "F16": 2, "F32": 4}.get(e["dtype"])
+        if size is None:
+            raise SystemExit(f"{name}: dtype {e['dtype']} is not supported")
+        a, b = e["data_offsets"]
+        shape = e["shape"]
+        if len(shape) == 1:
+            r0, r1 = 0, shape[0]
+        r0, r1 = max(0, r0), min(r1, shape[0])
+        off = a + r0 * shape[1] * size if len(shape) == 2 else a
+        raw = self._get(shard, f"bytes={start + off}-{start + off + (r1 - r0) * (shape[1] if len(shape) == 2 else 1) * size - 1}")
+        if e["dtype"] == "BF16":
+            w = (np.frombuffer(raw, np.uint16).astype(np.uint32) << 16).view(np.float32)
+        elif e["dtype"] == "F16":
+            w = np.frombuffer(raw, np.float16).astype(np.float32)
+        else:
+            w = np.frombuffer(raw, np.float32)
+        return w.reshape(r1 - r0, -1) if len(shape) == 2 else w
+
     def tensor(self, name):
         shard = self.index[name]
         if shard not in self.headers:
@@ -521,18 +547,27 @@ def write_index(meta, idxdir):
 def mtp(outdir, idxdir, m, keep, size):
     """mtp.idx/mtp.bin: the MTP (draft) head in q4s, and the embedding rows of the tokens it drafts.
 
-    The GGUF has no MTP head, so it comes from ornith-ai/Ornith-1.5-9B's safetensors (a few hundred MiB of byte
-    ranges). The app drafts with it and verifies with the full model: speculative decoding, engine_spec.inc.
+    llama.cpp writes Qwen3.5's MTP head as one more block after the model's layers (blk.<n>.*) plus its three
+    nextn.* tensors in that block. Hugging Face calls the same weights mtp.pre_fc_norm_embedding, mtp.pre_fc_norm_hidden,
+    mtp.fc, mtp.layers.0.* and mtp.norm; the app drafts with it and the full model verifies: engine_spec.inc.
     """
     t0 = time.time()
-    st = Safetensors()
-    P = "mtp."
-    need = [P + n for n in MTP_HF.values()]
-    if not all(st.has(n) for n in need):
-        have = [n for n in st.index if n.startswith(P)]
-        print(f"  MTP: no draft head in {BASE_REPO} ({len(have)} mtp.* tensors); "
-              f"the app runs without speculative decoding", flush=True)
+    if m.mtp_block is None:
+        print("  MTP: the GGUF has no draft head: the app runs without speculative decoding", flush=True)
         return
+    B = f"blk.{m.mtp_block}."
+    g = m.g
+    names = {n[len(B):] for n in g.tensors if n.startswith(B)}
+    need = ["nextn.enorm.weight", "nextn.hnorm.weight", "nextn.eh_proj.weight", "nextn.shared_head_norm.weight",
+            "attn_norm.weight", "post_attention_norm.weight", "attn_q_norm.weight", "attn_k_norm.weight",
+            "attn_q.weight", "attn_k.weight", "attn_v.weight", "attn_output.weight", "ffn_gate.weight",
+            "ffn_up.weight", "ffn_down.weight"]
+    missing = [n for n in need if n not in names]
+    if missing:
+        print(f"  MTP: the draft block {B[:-1]} has no {missing}: the app runs without speculative decoding",
+              flush=True)
+        return
+    mat = lambda n: m.mat(B + n)              # noqa: E731
     nh, hd = m.n_heads, m.head_dim
     out = open(outdir / f"{MTP_NAME}.bin", "wb")
     recs = {}
@@ -551,34 +586,30 @@ def mtp(outdir, idxdir, m, keep, size):
         wb, sb, rows = q4s(w)
         put(key, wb + sb, rows=rows, cols=w.shape[1], scales=len(wb), fmt="q4s")
 
-    f32("pre_e", 1.0 + st.tensor(P + MTP_HF["pre_e"]))
-    f32("pre_h", 1.0 + st.tensor(P + MTP_HF["pre_h"]))
-    q4s_("fc", st.tensor(P + MTP_HF["fc"]))
-    L = P + "layers.0."
-    f32("attn_norm", 1.0 + st.tensor(L + "input_layernorm.weight"))
-    f32("mlp_norm", 1.0 + st.tensor(L + "post_attention_layernorm.weight"))
-    f32("q_norm", 1.0 + st.tensor(L + "self_attn.q_norm.weight"))
-    f32("k_norm", 1.0 + st.tensor(L + "self_attn.k_norm.weight"))
-    qg = st.tensor(L + "self_attn.q_proj.weight")
-    if qg.shape[0] == 2 * nh * hd:
-        qg = qg.reshape(nh, 2, hd, -1)
+    f32("pre_e", 1.0 + mat("nextn.enorm.weight"))
+    f32("pre_h", 1.0 + mat("nextn.hnorm.weight"))
+    q4s_("fc", mat("nextn.eh_proj.weight"))
+    f32("attn_norm", 1.0 + mat("attn_norm.weight"))
+    f32("mlp_norm", 1.0 + mat("post_attention_norm.weight"))
+    f32("q_norm", 1.0 + mat("attn_q_norm.weight"))
+    f32("k_norm", 1.0 + mat("attn_k_norm.weight"))
+    q = mat("attn_q.weight")
+    if q.shape[0] == 2 * nh * hd:             # per head [query | gate], as in the model's own attention
+        qg = q.reshape(nh, 2, hd, -1)
         q, gate = qg[:, 0].reshape(nh * hd, -1), qg[:, 1].reshape(nh * hd, -1)
     else:
-        q, gate = qg, st.tensor(L + "self_attn.q_gate.weight")
-    q4s_("wqkv", np.concatenate([q, st.tensor(L + "self_attn.k_proj.weight"),
-                                 st.tensor(L + "self_attn.v_proj.weight"), gate]))
-    q4s_("wo", st.tensor(L + "self_attn.o_proj.weight"))
-    q4s_("wgu", np.concatenate([st.tensor(L + "mlp.gate_proj.weight"), st.tensor(L + "mlp.up_proj.weight")]))
-    q4s_("wdown", st.tensor(L + "mlp.down_proj.weight"))
-    f32("norm", 1.0 + st.tensor(P + MTP_HF["norm"]))
+        gate = mat("attn_q_gate.weight")
+    q4s_("wqkv", np.concatenate([q, mat("attn_k.weight"), mat("attn_v.weight"), gate]))
+    q4s_("wo", mat("attn_output.weight"))
+    q4s_("wgu", np.concatenate([mat("ffn_gate.weight"), mat("ffn_up.weight")]))
+    q4s_("wdown", mat("ffn_down.weight"))
+    f32("norm", 1.0 + mat("nextn.shared_head_norm.weight"))
     wsize = out.tell()
-    # the draft's own tokens: the input embedding rows of the first ND kept tokens, in lm_head row order
-    emb, rb = m.roles["embed"], m.shape(m.roles["embed"])[1]
-    rowbytes = rb // 2 + rb // 32 * 2
-    with open(outdir / f"{NAME}.bin", "rb") as f:      # already written, q4row: one record per token id
-        eoff = None
-        meta = json.loads((outdir / f"{NAME}.json").read_text())
-        eoff = meta["tensors"]["embed"]["offset"]
+    # the draft's own tokens: the input-embedding rows of the first ND kept tokens, in lm_head row order
+    ecols = m.shape(m.roles["embed"])[1]
+    rowbytes = ecols // 2 + ecols // 32 * 2
+    eoff = json.loads((outdir / f"{NAME}.json").read_text())["tensors"]["embed"]["offset"]
+    with open(outdir / f"{NAME}.bin", "rb") as f:
         for tokid in keep[:ND]:
             f.seek(eoff + int(tokid) * rowbytes)
             out.write(f.read(rowbytes))
@@ -587,6 +618,7 @@ def mtp(outdir, idxdir, m, keep, size):
     path = f"/data/{MTP_NAME}.bin".encode()
     head = struct.pack("<4sI128sQQI", b"PMTP", ND, path, wsize, tsize, len(MTP_ORDER))
     body = b"".join(struct.pack("<QQIIQI", *recs[k]) for k in MTP_ORDER)
+    idxdir.mkdir(parents=True, exist_ok=True)
     (idxdir / "mtp.idx").write_bytes(head + body)
     print(f"  {MTP_NAME}.bin: tensors {wsize / 2**20:.1f} MiB + draft table {tsize / 2**20:.1f} MiB; "
           f"mtp.idx {len(head + body)} B, {time.time() - t0:.0f} s", flush=True)
@@ -661,35 +693,71 @@ def inspect(src, probe_mtp=True):
     print(rep.text())
     keep = np.load(KEEP)
     print(f"keep list: {len(keep)} ids, {int(keep.min())}..{int(keep.max())}, {len(np.unique(keep))} unique")
-    # ---- the MTP head: llama.cpp keeps it after the model's layers: blk.<last>.* plus nextn.*
+    # ---- the MTP head: llama.cpp keeps it after the model's layers, as blk.<last>.* plus its nextn.* tensors
     in_gguf = [n for n in g.tensors if n.lower().startswith(("nextn", "mtp"))]
     print(f"\nMTP head in the GGUF: {sorted(in_gguf) if in_gguf else 'no'}")
     if m.mtp_block is not None:
-        print(f"  its layer: blk.{m.mtp_block}.* " + ", ".join(sorted(
+        print(f"  its block, blk.{m.mtp_block}: " + ", ".join(sorted(
             n.split(".", 2)[2] for n in g.tensors if n.startswith(f"blk.{m.mtp_block}."))))
-    if probe_mtp and in_gguf:
+    else:
+        print("  no nextn_predict_layers: no speculative decoding")
+    # ---- does the GGUF hold the weights Hugging Face's checkpoint does? (a few rows of each kind of tensor, read
+    # straight from ornith-ai/Ornith-1.5-9B: it is what catches a transposed or reordered tensor before a 40-minute run)
+    if probe_mtp:
+        B = f"blk.{m.mtp_block}." if m.mtp_block is not None else "blk.0."
+        L = "model.language_model.layers."
+        checks = [
+            ("token_embd.weight", "model.language_model.embed_tokens.weight"),
+            ("output_norm.weight", "model.language_model.norm.weight"),
+            ("output.weight", "lm_head.weight"),
+            ("blk.0.attn_norm.weight", L + "0.input_layernorm.weight"),
+            ("blk.0.post_attention_norm.weight", L + "0.post_attention_layernorm.weight"),
+            ("blk.0.attn_qkv.weight", L + "0.linear_attn.in_proj_qkv.weight"),
+            ("blk.0.attn_gate.weight", L + "0.linear_attn.in_proj_z.weight"),
+            ("blk.0.ssm_beta.weight", L + "0.linear_attn.in_proj_b.weight"),
+            ("blk.0.ssm_alpha.weight", L + "0.linear_attn.in_proj_a.weight"),
+            ("blk.0.ssm_conv1d.weight", L + "0.linear_attn.conv1d.weight"),
+            ("blk.0.ssm_out.weight", L + "0.linear_attn.out_proj.weight"),
+            ("blk.0.ffn_gate.weight", L + "0.mlp.gate_proj.weight"),
+            ("blk.0.ffn_down.weight", L + "0.mlp.down_proj.weight"),
+            ("blk.3.attn_q.weight", L + "3.self_attn.q_proj.weight"),
+            ("blk.3.attn_k.weight", L + "3.self_attn.k_proj.weight"),
+            ("blk.3.attn_output.weight", L + "3.self_attn.o_proj.weight"),
+            (B + "nextn.enorm.weight", "mtp.pre_fc_norm_embedding.weight"),
+            (B + "nextn.hnorm.weight", "mtp.pre_fc_norm_hidden.weight"),
+            (B + "nextn.eh_proj.weight", "mtp.fc.weight"),
+            (B + "nextn.shared_head_norm.weight", "mtp.norm.weight"),
+            (B + "attn_q.weight", "mtp.layers.0.self_attn.q_proj.weight"),
+            (B + "ffn_up.weight", "mtp.layers.0.mlp.up_proj.weight"),
+        ]
+        print("\nthe GGUF against Hugging Face's checkpoint (first rows):")
         try:
             st = Safetensors()
-            have = [n for n in st.index if n.startswith("mtp.")]
-            missing = [n for n in ("mtp." + v for v in MTP_HF.values()) if n not in st.index]
-            print(f"MTP head in {BASE_REPO}: {len(have)} tensors" +
-                  (f", MISSING {missing}" if missing else ", all the ones the app needs"))
-            print("  " + ", ".join(sorted(have)[:16]))
-            # does the GGUF's copy hold the same weights? (4x4 values of the projection, and a norm)
-            for role, sf_name in (("nextn.eh_proj.weight", "fc.weight"), ("nextn.enorm.weight",
-                                                                        "pre_fc_norm_embedding.weight")):
-                if role not in g.tensors:
+            for gg, hf in checks:
+                if gg not in g.tensors or not st.has(hf):
+                    print(f"  {gg:38s} {'missing in the GGUF' if gg not in g.tensors else 'missing in ' + BASE_REPO}")
                     continue
-                a = m.mat(role)
-                b = st.tensor("mtp." + sf_name)
-                if a.ndim == 2:
-                    a, b = a[:4, :4], b[:4, :4]
-                else:
-                    a, b = a[:4], b[:4]
-                print(f"  {role} vs mtp.{sf_name}: " + ("same" if np.allclose(a, b, atol=1e-6)
-                                                        else f"DIFFERENT\n    {a.ravel()[:4]}\n    {b.ravel()[:4]}"))
+                a = g.rows(gg, 0, min(4, m.shape(gg)[0])) if len(m.shape(gg)) == 2 else m.mat(gg)[:4]
+                b = st.rows(hf, 0, 4)
+                ok = a.shape == b.shape and np.allclose(a, b, atol=2e-2, rtol=2e-2)
+                print(f"  {gg:38s} vs {hf:44s} {'same' if ok else 'DIFFERENT'}"
+                      + ("" if ok else f"\n      gguf {np.asarray(a).ravel()[:4]}\n      hf   {np.asarray(b).ravel()[:4]}"))
+            # the delta rule's A: llama.cpp may store -exp(A_log) instead of A_log
+            for hf in (L + "0.linear_attn.A_log",):
+                if st.has(hf) and "blk.0.ssm_a" in g.tensors:
+                    a = m.mat("blk.0.ssm_a")
+                    log = st.rows(hf, 0, 4).ravel()
+                    print(f"  blk.0.ssm_a: gguf {a[:4]}; hf A_log {log[:4]}; hf -exp(A_log) {(-np.exp(log))[:4]}"
+                          f"  => {'-exp(A_log)' if np.allclose(a[:4], -np.exp(log), atol=1e-3) else 'A_log'}")
+            # the merge table, in the same rank order?
+            tok_cmp = tokenizer_bin.compare(tok, g.meta.get("tokenizer.ggml.tokens") or [],
+                                            g.meta.get("tokenizer.ggml.merges") or [],
+                                            g.meta.get("tokenizer.ggml.token_type") or [])
+            for line in tok_cmp.lines:
+                if "merge" in line:
+                    print("  " + line.strip())
         except (Exception, SystemExit) as ex:  # noqa: BLE001
-            print(f"MTP head in {BASE_REPO}: cannot read the index ({ex})")
+            print(f"  cannot compare with {BASE_REPO}: {ex}")
     print(f"\ndone in {time.time() - t0:.0f} s; {g.r.n_read / 2**20:.1f} MiB read")
     return 0
 
