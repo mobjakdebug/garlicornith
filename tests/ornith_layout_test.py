@@ -37,9 +37,10 @@ def main():
     # the byte counts the layouts imply: 4 bits and a scale per 32 for q4s; 3 bits and a scale for q3s
     w = rng.standard_normal((200, 96)).astype(np.float32)          # 200 rows -> 256 after padding
     wb, sb, rows = oc.q4s(w)
-    assert rows == 256 and len(wb) == 256 * 96 // 8 and len(sb) == 256 * 96 // 32 * 2
+    assert rows == 256 and len(wb) == 256 * 96 // 2 and len(sb) == 256 * 96 // 32 * 2, (len(wb), len(sb))
     w3, s3, rows3 = oc.q3s(w)
-    assert rows3 == 256 and len(w3) == 2 * (96 // 32) * 384 * 4 and len(s3) == 256 * 96 // 32 * 2
+    assert rows3 == 256 and len(w3) == 2 * (96 // 32) * 384 * 4 and len(s3) == 256 * 96 // 32 * 2, \
+        (len(w3), len(s3))
     # the value-head order: llama.cpp's head i holds Hugging Face's perm[i]; undoing it must give the input back
     m = oc.Model.__new__(oc.Model)
     m.n_vh = 32
