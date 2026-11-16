@@ -1,221 +1,124 @@
-<p align="center"><img src="docs/logo.svg" width="112" alt="Garlic LLM logo: a garlic bulb on a blue square"></p>
+# Garlic LLM · Ornith-1.5-9B
 
-# Garlic LLM
+[Garlic LLM](https://github.com/leonardo-alegria/garlic-llm) runs a 9-billion-parameter language model on a
+PlayStation 4's own GPU, offline. Upstream it runs Qwen3.5-9B; **this repository runs
+[Ornith-1.5-9B](https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF) instead**, converted from the model's GGUF into
+the formats the console's kernels read, and built as a PS4 package by GitHub Actions.
 
-**A 9-billion-parameter language model running on a PS4. Offline.**
+Ornith-1.5-9B is the same architecture as Qwen3.5-9B (llama.cpp's `qwen35`: 32 layers, 4096 hidden, 256-wide
+attention heads, three Gated DeltaNet layers per full-attention one, a 1-layer MTP head), so the app's compute
+kernels, its weight formats, its 4-bit attention cache and its speculative decoding all carry over unchanged. What
+changes is the weights, the layout inside them, the names in the indexes and a few strings.
 
-Garlic LLM is a homebrew app for the PlayStation 4. It runs [Qwen3.5-9B](https://huggingface.co/Qwen) on the console's own GPU, with no PC and no internet while it runs. It also listens, talks, and runs the Python it writes.
+The model is a far stronger one: Ornith-1.5-9B scores 70.6 on SWE-bench Verified, 86.4 on GPQA Diamond and 46.2 on
+Terminal-Bench 2.1, against 53.2 / 81.7 / 21.3 for Qwen3.5-9B on the same table in its model card.
 
-[Website](https://garlicllm.dev) · [Download](#install) · [Demo video](https://garlicllm.dev/#demo) · [Support the project](#support)
+## What is in here
 
-![Garlic LLM answering a question on a PS4](docs/chat.png)
+| Path | What it is |
+| --- | --- |
+| `pc/ornith_convert.py` | **the port**: Ornith-1.5-9B's GGUF → the four files the app reads, in the layout of the shipped 9B |
+| `pc/gguf.py` | a GGUF reader with no dependencies beyond numpy (metadata, tensor table, dequantization of F32/F16/BF16/Q8_0/Q4_0/Q4_K/Q5_K/Q6_K, by byte range) |
+| `pc/ornith_check_layout.py` | compares the GGUF's tensors with Hugging Face's checkpoint: the order of the delta rule's value heads, the norms, a row of each matrix |
+| `pc/vocab_order.npy`, `chat/assets/tokenizer.bin` | the app's vocabulary and the lm_head keep list: Ornith's tokens and merges are identical to Qwen3.5's, so both are used unchanged |
+| `pc/ci_toolchain.py` | fetches the OpenOrbis PS4 toolchain and Zig for the build |
+| `.github/workflows/build.yml` | convert + compile + package, on GitHub Actions; publishes the package as an artifact |
+| `.github/workflows/probe.yml` | cheap checks: what the GGUF holds, what the toolchain release holds |
+| `chat/`, `shaders/`, `build_chat.py`, … | Garlic LLM itself, unchanged except for the model's name and the package's files |
 
-## What it does
+## The conversion
 
-| Feature | Details |
-|---|---|
-| **Text chat** | Qwen3.5-9B at 31–39 tokens/s, and up to 43 tokens/s on code. 16K-token context. |
-| **Voice conversation** | Speak and it answers aloud (Chatterbox) in Spanish, English, Portuguese, Russian, Italian, French and German. |
-| **Dictation** | Hold a button and talk instead of typing (Parakeet TDT 0.6B v3), in 25 European languages. |
-| **Python mode** | Ask for a program. It writes MicroPython and the console runs it. |
-| **Think mode** | The model reasons before it answers. Off by default; a thought takes about half a minute. |
+`python pc/ornith_convert.py convert --gguf models/Ornith-1.5-9B-BF16.gguf` writes:
 
-Everything runs on the console. Nothing is sent anywhere.
-
-Speeds were measured on a base/Slim PS4. In voice mode the chat model runs at about 22 tokens/s, because the voice model takes the memory that speculative decoding uses.
-
-## Requirements
-
-- A PS4 running [GoldHEN](https://github.com/GoldHEN/GoldHEN). Tested on a base/Slim console with firmware 11.52. Users also report it working on a PS4 Slim with firmware 14.00 and on a PS4 Pro with firmware 12.02 (25–45 tokens/s).
-- About 6 GB of free space, or 12 GB if you copy the package to the console's own disk before installing it.
-- To use your voice: any ordinary microphone the console recognises.
-
-Other firmware versions are not tested yet. If you try one, please [open an issue](https://github.com/leonardo-alegria/garlic-llm/issues) with the result.
-
-## Install
-
-1. Download the all-in-one package (about 5.7 GB, models inside) from [Hugging Face](https://huggingface.co/garlic-llm/garlic-llm-ps4).
-2. Copy the PKG to the console and install it like any other homebrew package (*Settings → Debug Settings → Game → Package Installer*).
-3. Open **Garlic LLM** from the home screen. The first screen loads the model; after that it needs no PC and no connection.
-
-**Updating.** Download the new package and install it over the old one. The models are inside, so there is nothing else to copy.
-
-## Controls
-
-**Chat**
-
-| Button | Action |
-|---|---|
-| ✕ | Type a message |
-| □ (hold) | Dictate a message; release to finish |
-| ○ | Stop the answer |
-| △ | New chat |
-| ↑ ↓ or left stick | Scroll |
-| L1 | Voice mode |
-| R1 | Run the Python program in the last answer |
-| R3 or touchpad | Think mode on / off |
-| L3 | [API](#api) on / off |
-| L2 / R2 | Temperature down / up |
-
-After dictating, choose what to do with the text: ✕ send, △ edit, □ record again, ○ discard.
-
-**Keyboard**
-
-| Button | Action |
-|---|---|
-| ✕ | Type the selected key |
-| □ | Delete (hold to repeat) |
-| △ | Space |
-| L1 | Shift |
-| R1 | Emoji |
-| L2 (hold) | Dictate and add the text |
-| R2 | Send |
-| ○ | Close |
-
-**Voice mode:** hold □ to talk (this also interrupts the answer), △ starts a new chat, ○ leaves voice mode.
-
-The interface follows the console's language: English, Spanish, Portuguese or Russian.
-
-## How it works
-
-A PS4 gives homebrew no compute API and no machine-learning library, so Garlic LLM talks to the GPU directly.
-
-- **Compute kernels.** The model's operations (matrix products over 4-bit weights, attention, normalisation) are OpenCL C kernels compiled by LLVM for the console's GCN architecture. They are in [`shaders/`](shaders/).
-- **Hand-written command buffers.** The app dispatches those kernels by writing PM4 packets itself, the low-level commands a graphics driver would normally generate.
-- **Speculative decoding.** Qwen3.5's own MTP head drafts up to two tokens ahead, and the full model verifies them in one pass.
-- **Custom Q4 and Q3 weights.** The 9B is stored in two formats made for these kernels. Q4 holds 4-bit weights and is used for most matrices and the output head. Q3 holds 3-bit weights (about 3.5 bits each with their scales) and is used for the two largest matrices of each layer, the MLP's gate and up projections. Storing everything in Q4 would take about 384 MiB more, which the console does not have free.
-- **4-bit attention cache.** The attention cache is quantized to 4 bits too, which is how a 16K context fits.
-- **GPU-visible memory.** The weights live in "Garlic" memory, the PS4's name for the memory the GPU reads directly. That is where the project's name comes from.
-- **The rest is plain C.** The tokenizer, the user interface, the text renderer and the audio path run on the CPU. Python programs run on an embedded [MicroPython](https://micropython.org).
-
-The app is built with the open-source [OpenOrbis](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) toolchain. The techniques, the measurements and the dead ends are written up in a 147-page guide, [*Nine Billion Parameters on a PS4*](https://ko-fi.com/s/5d8050b149).
-
-## API
-
-Garlic LLM can serve an OpenAI-compatible API on your network, so that your own programs and apps use the model on the console. It is off until you turn it on.
-
-> The API is new. It is in the source code and comes with the next package; version 1.19 does not have it yet.
-
-**Turn it on.** On the chat screen, press **L3** (click the left stick). The top of the screen then shows where the API listens, for example `API · 192.168.1.5:8080`. L3 again turns it off, and the app remembers the choice for the next time.
-
-**Use it.** Point any OpenAI client at that address, with `http://192.168.1.5:8080/v1` as its base URL:
-
-```bash
-curl http://192.168.1.5:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":128}'
+```
+models/ornith-1.5-9b-q4s.bin    [GPU part: final_norm, 32 layers, trimmed lm_head][input-embedding rows][token ids]
+models/ornith-1.5-9b-mtp.bin    the MTP head in q4s + the embedding rows of the 32 768 tokens it drafts
+chat/assets_9b/model.idx        PMQ5: the shape, and where every tensor sits in the file
+chat/assets_9b/mtp.idx          PMTP: the same for the draft head
 ```
 
-- `GET /v1/models`, `POST /v1/chat/completions` (`stream: true` for server-sent events), `GET /health`.
-- The OpenAPI 3.1 description is at `GET /openapi.json` (also in [`chat/assets/openapi.json`](chat/assets/openapi.json)).
-- Replies are generated the way the chat generates its own, speculative decoding included.
-- One request runs at a time, and the chat screen is busy while it does: it says that a request is being answered, and ○ stops the reply (the client gets what was written so far, with `finish_reason: "length"`). Requests wait while the keyboard, voice mode or a Python program is open.
-- A request is a conversation of its own, so the one on the console's screen is cleared.
-- Reasoning is off. Only `n = 1` is supported; `tools`, `logprobs` and similar parameters are ignored.
-- For an API key, put it in `/data/garlic_api_key.txt` on the console. Requests then need `Authorization: Bearer <key>`. Without that file, anyone on your network can use the API while it is on, and clients that insist on a key accept any text.
-- If the screen shows `API · :8080`, the app could not read the console's address: it is in *Settings → Network → View Connection Status*.
+The formats are the ones the shipped 9B uses, chosen for what the console has (`shaders/spec.h`, `shaders/qwen35.cl`):
 
-## Build from source
+| Tensors | Format | Why |
+| --- | --- | --- |
+| MLP gate and up (32 × 12 288 × 4096) | `q3s` | 3.5 bits a weight: the two biggest matrices, in the format that fits the console's memory |
+| every other matrix | `q4s` | 4.5 bits a weight, with the SWAR dot products (`swar_mv1..4`) |
+| input embedding | `q4row` | kept out of GPU memory: the CPU reads the one row of each token from the file |
+| `lm_head` | 4 bits, 248 070 of 248 320 rows | the rows of `pc/vocab_order.npy`, the token ids by frequency, plus the id of each row |
+| norms, `conv1d`, `A`, `dt_bias`, `gnorm` | f32 | as the kernels read them |
 
-You only need this to change the app. The build scripts are written for Windows.
+GPU memory: about 3.8 GiB of weights, plus the caches — the same budget the Qwen3.5 build lives in.
 
-**Tools**
+### Three things the GGUF does differently, and how they are undone
 
-- Python 3 with `numpy` and `Pillow`.
-- The [OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) in `toolchain/OpenOrbis/PS4Toolchain/`.
-- [Zig](https://ziglang.org) in `toolchain/zig/`. Its bundled clang compiles both the C code and the GCN kernels.
-- The .NET runtime in `toolchain/dotnet/`, for OpenOrbis' package tool.
+1. **The norms are stored as `1 + w`.** llama.cpp writes Qwen3.5's RMSNorm weights already offset. The app's kernels
+   add the same 1, so they are written out as they come — *except* the delta rule's `ssm_norm`, which is a plain
+   weight in both and is kept plain. (`pc/ornith_check_layout.py` shows the ±1 for every norm.)
+2. **The delta rule's value heads are in llama.cpp's order.** llama.cpp reads the 32 value heads as
+   (16 key heads × 2) transposed, so its head *i* is Hugging Face's `i // 2 + (i % 2) * 16`. That one permutation
+   reaches `ssm_a`, `ssm_dt.bias`, `ssm_beta`, `ssm_alpha`, `ssm_out`'s columns, `attn_gate`'s rows, `attn_qkv`'s
+   value rows and `ssm_conv1d`'s value channels. The converter puts them back in Hugging Face's order, which is what
+   the app's kernels were written against; `pc/ornith_check_layout.py` checks it tensor by tensor.
+3. **`ssm_a` is already `-exp(A_log)`.** The converter keeps it (and says so if a future GGUF ever ships the log).
 
-To keep the tools somewhere else, set the `GARLIC_TOOLCHAIN` environment variable to that folder.
+The **MTP head** (speculative decoding) is in the GGUF too: llama.cpp writes it as one more block after the model's
+layers, `blk.32.*`, with `nextn.enorm`, `nextn.hnorm`, `nextn.eh_proj` and `nextn.shared_head_norm` — Hugging Face's
+`mtp.pre_fc_norm_embedding`, `pre_fc_norm_hidden`, `fc`, the MTP layer and `mtp.norm`. The converter writes it to
+`mtp.bin` (about 540 MiB) so the app drafts up to two tokens ahead and the full model verifies them: that is what
+takes generation from ~20 to ~31–39 tokens/s on a base PS4.
 
-**Build the app**
+**The vocabulary is the same one.** All 248 070 tokens and all 247 587 merges match the app's `tokenizer.bin` byte for
+byte and in rank order (checked by `pc/tokenizer_bin.py`), and `<|im_start|>`, `<|im_end|>`, `<|endoftext|>`, `<think>`
+and `</think>` are at the ids the C code has (248045, 248046, 248044, 248068, 248069). So the tokenizer, the keep
+list and the chat template in `chat/main.c` (which already writes
+`<|im_start|>assistant\n<think>\n\n</think>\n\n` for thinking off — Ornith's own template) need no change.
+
+## Building it
 
 ```bash
-python build_chat.py
+python pc/ci_toolchain.py                     # OpenOrbis PS4 toolchain + Zig into toolchain/
+python pc/ornith_convert.py inspect           # optional: the metadata, the tensor map, the checks
+python pc/ornith_convert.py convert           # downloads the BF16 GGUF and writes the four files
+python build_chat.py --full                   # build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
 ```
 
-This writes the PKG to `build/chat/`. Add `--upload` to also copy the package to the console over FTP. For `--upload`, set the `PS4_IP` environment variable to your console's address and start GoldHEN's FTP server.
+On GitHub Actions: push a change to `ci/build` (or run **build-ornith-ps4** by hand). The workflow installs the
+toolchain and Zig, downloads the GGUF, converts it, compiles the app, builds the package and keeps:
 
-The app's data files (fonts, tokenizer tables, compiled kernels) are already in `chat/assets*`, so a build does not need the scripts in `pc/`.
+* `garlic-ornith-ps4-pkg` — the all-in-one package (~5.5 GB, the model inside)
+* `garlic-ornith-ps4-model` — the weight files and the two indexes, for an app-only package with the weights in `/data`
+* `logs` — the conversion, build and inspection output
 
-**Model files**
+Each run also writes its logs into `ci/last-run/<utc>-<job>/` on the branch, because artifacts are not always
+reachable from everywhere.
 
-A plain build keeps the weights outside the package. The app looks for each of these files first inside its package (`/app0/models`) and then in `/data` on the console:
+`--quant` / the workflow's `quant` input picks another file of the GGUF repository (`bf16`, `q8_0`, `q6_k`, `q5_k_m`,
+`q4_k_m`); BF16 is the default because the console's own formats then lose the least. A `q4_k_m` run needs a fifth of
+the bandwidth and about a third of the disk.
 
-| File | Size | Contents |
-|---|---|---|
-| `qwen3.5-9b-q4s.bin` | 4.32 GiB | Qwen3.5-9B |
-| `qwen3.5-9b-mtp.bin` | 0.20 GiB | The MTP head for speculative decoding |
-| `parakeet-v3-q4i.bin` | 0.33 GiB | Speech to text |
-| `chatterbox-t3.bin` | 0.29 GiB | Text to speech, first stage |
-| `chatterbox-s3gen-mf.bin` | 0.09 GiB | Text to speech, second stage |
+## Installing
 
-The code can also build a smaller app with Qwen3.5-4B (`--4b`, weights in `qwen3.5-4b-q4i.bin`). It has no speculative decoding and is not released as a package.
+1. Download `IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg` from the run's artifacts.
+2. Copy it to the console and install it (GoldHEN: *Settings → Debug Settings → Game → Package Installer*).
+   It installs as **Garlic LLM Ornith** (title id `PSAI00003`), next to the original Garlic LLM if that one is there.
+3. About 6 GB free, or 12 GB if you copy the package to the console's own disk first. Same controls as upstream
+   (✕ type, □ dictate, ○ stop, △ new chat, L1 voice, R1 run the Python, R3/touchpad think mode, L3 API,
+   L2/R2 temperature).
 
-Download them from [Hugging Face](https://huggingface.co/garlic-llm/garlic-llm-ps4). `python pc/upload_model.py <file>` copies a file to `/data` on the console. To build the all-in-one package instead, put the files in `models/` and add `--full` to the build command.
+## What this build does not have
 
-The scripts that made them from the original checkpoints are in `pc/`, and each one's header describes its inputs and the file format it writes. The first conversion of the Qwen models (`pc/modal_qwen35*.py`) runs on [Modal](https://modal.com), on machines with 32 to 64 GB of memory.
+* **Voice and dictation.** Chatterbox (speech) and Parakeet (dictation) need their own weights —
+  `chatterbox-t3.bin`, `chatterbox-s3gen-mf.bin`, `parakeet-v3-q4i.bin` — which `pc/convert_parakeet.py` and
+  `pc/convert_chatterbox_*.py` produce from their own checkpoints; they are not part of this conversion. Without them
+  the app starts, chats and runs Python, and says voice and dictation are not available. `build_chat.py` packs them
+  automatically if they are in `models/`.
+* **Sampling beyond temperature.** The app samples on the GPU with temperature and min-p 0.05; Ornith's card
+  suggests `top_p 0.95`, `top_k 20` and `presence_penalty 1.5` for general chat, which would need different kernels.
+  Temperature is L2/R2, and 0.6–0.7 suits the model's coding recommendation.
+* **Think mode is off by default**, as upstream: R3 turns it on, and a thought is capped at 1024 tokens.
 
-**Repository layout**
+## Credits and licences
 
-| Path | Contents |
-|---|---|
-| `chat/` | The app: engine, user interface, tokenizer, voice, Python runner |
-| `chat/py/` | MicroPython and its port to the console |
-| `shaders/` | The GPU kernels |
-| `pc/` | Converters for the models, reference implementations in NumPy, and the scripts that build the app's data files |
-| `build_chat.py` | Builds the PKG |
-
-## Troubleshooting
-
-- **"Couldn't start".** A model file is missing or incomplete. Install the package again. With a build from source, check the files in `/data` against the table above.
-- **Dictation hears nothing.** Check that the console sees your microphone, and keep □ held while you speak.
-- **Anything else.** The app writes a log to `/data/ps4ai_log.txt`. Attach it when you [open an issue](https://github.com/leonardo-alegria/garlic-llm/issues).
-
-## Questions
-
-**Does it need internet?** No. The model, the voices and the speech recognition run on the console.
-
-**Does it run on a PS4 Pro?** A user reports that version 1.19 works on a PS4 Pro with firmware 12.02, at 25 to 45 tokens/s. I have not tested it on a Pro myself.
-
-**And on a PS5?** No. Garlic LLM is written for the PS4's GPU and system software.
-
-**Can it harm my console?** It is an ordinary homebrew app and contains no exploit. It needs GoldHEN, which you install at your own risk.
-
-**Is this the first AI on a PS4's GPU?** As far as I know, yes. I found no earlier public project that runs a language model on the PS4's GPU. If you know of one, please [open an issue](https://github.com/leonardo-alegria/garlic-llm/issues).
-
-## Support
-
-Garlic LLM is free and open source. If you want to see more of it (more consoles tested, faster kernels), you can help fund the work:
-
-- [PayPal](https://www.paypal.com/donate/?business=leonardoalegria2002%40gmail.com&currency_code=USD)
-- [Ko-fi](https://ko-fi.com/leonardoalegria)
-- Buy the guide, [*Nine Billion Parameters on a PS4*](https://ko-fi.com/s/5d8050b149) (PDF, pay what you want from 19 USD)
-
-Bug reports and test results from other consoles help just as much.
-
-## Licence and credits
-
-The app's code is licensed under the [GNU General Public License v3.0](LICENSE). The models and third-party components keep their own licences:
-
-| Component | Author | Licence |
-|---|---|---|
-| Qwen3.5-9B and Qwen3.5-4B | Alibaba Qwen | Apache-2.0 |
-| Chatterbox (text to speech) | Resemble AI | MIT |
-| Parakeet TDT 0.6B v3 (speech to text) | NVIDIA | CC-BY-4.0 |
-| MicroPython | The MicroPython project | MIT |
-| Twemoji | Twitter, Inc. and other contributors | CC-BY-4.0 |
-| Fonts: Selawik, Noto, Arimo, Inconsolata, Cascadia Mono | Their authors | SIL OFL 1.1 |
-| DejaVu Sans | Its authors | Bitstream Vera licence and public domain |
-
-The complete notices are in [`CREDITS.md`](CREDITS.md) and ship inside the app.
-
-Garlic LLM is built with the [OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) and runs on consoles with [GoldHEN](https://github.com/GoldHEN/GoldHEN). Both are third-party projects by their own authors, and Garlic LLM would not exist without them.
-
-## Contact
-
-Garlic LLM is built by [Leonardo Alegría](https://www.linkedin.com/in/leonardoalegria/). Questions, collaborations and press: [leo@garlicllm.dev](mailto:leo@garlicllm.dev). Bugs and test results go to [GitHub issues](https://github.com/leonardo-alegria/garlic-llm/issues).
-
----
-
-Not affiliated with or endorsed by Sony Interactive Entertainment. PlayStation and PS4 are trademarks of their owners.
+Garlic LLM is © Leonardo Alegría, under the licence in [`LICENSE`](LICENSE) (see [`CREDITS.md`](CREDITS.md) for the
+fonts, Twemoji, MicroPython and the models it ships). Ornith-1.5-9B is MIT-licensed. This repository adds the GGUF
+converter, the layout checks and the CI; the app, the kernels and the build scripts are upstream's.
