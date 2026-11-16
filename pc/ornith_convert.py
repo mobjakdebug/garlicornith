@@ -142,7 +142,7 @@ def q3s(w):
 # Face's checkpoint, so that a rename in a future GGUF shows up as a clear message instead of a wrong weight.
 ROLE_NAMES = {
     "attn_norm": ["attn_norm.weight", "input_layernorm.weight", "attention_norm.weight"],
-    "mlp_norm": ["ffn_norm.weight", "post_attention_layernorm.weight"],
+    "mlp_norm": ["ffn_norm.weight", "post_attention_norm.weight", "post_attention_layernorm.weight"],
     "q_norm": ["attn_q_norm.weight", "self_attn.q_norm.weight"],
     "k_norm": ["attn_k_norm.weight", "self_attn.k_norm.weight"],
     "q": ["attn_q.weight", "self_attn.q_proj.weight"],
@@ -150,8 +150,8 @@ ROLE_NAMES = {
     "v": ["attn_v.weight", "self_attn.v_proj.weight"],
     "o": ["attn_output.weight", "self_attn.o_proj.weight"],
     "gate": ["attn_gate.weight", "attn_q_gate.weight", "self_attn.q_gate.weight"],
-    "in_qkv": ["linear_attn.in_proj_qkv.weight", "ssm_qkv.weight"],
-    "in_z": ["linear_attn.in_proj_z.weight", "ssm_z.weight"],
+    "in_qkv": ["attn_qkv.weight", "linear_attn.in_proj_qkv.weight", "ssm_qkv.weight"],
+    "in_z": ["attn_gate.weight", "linear_attn.in_proj_z.weight", "ssm_z.weight"],
     "in_b": ["linear_attn.in_proj_b.weight", "ssm_beta.weight"],
     "in_a": ["linear_attn.in_proj_a.weight", "ssm_alpha.weight"],
     "conv": ["linear_attn.conv1d.weight", "ssm_conv1d.weight"],
@@ -197,36 +197,49 @@ class Model:
                 raise SystemExit(f"{self.src}: the metadata has no {k}: keys are {sorted(m)}")
         self.roles, self.layers, self.extra = self._classify()
 
-    def _classify(self):
+    def _classify(self, strict=True):
         roles = {}
         for key, cands in TOP_NAMES.items():
-            roles[key] = self._pick(cands, key)
-        layers, extra = {}, {}
+            roles[key] = self._pick(cands, key, strict)
+        layers, extra, problems = {}, {}, []
         for i in range(self.n_layers):
             pre = f"blk.{i}."
             sub = {n[len(pre):]: n for n in self.g.tensors if n.startswith(pre)}
-            if not sub:
-                raise SystemExit(f"{self.src}: layer {i} has no tensors (the names are not blk.N.*)")
             found = {}
-            for key, cands in ROLE_NAMES.items():
-                for c in cands:
+            linear = any(k in sub for k in ("ssm_out.weight", "ssm_alpha.weight", "ssm_conv1d.weight",
+                                            "ssm_a", "ssm_norm.weight"))
+            keys = LINEAR_ROLES if linear else FULL_ROLES
+            for key in ("attn_norm", "mlp_norm", *keys, "gu_gate", "gu_up", "down"):
+                for c in ROLE_NAMES[key]:
                     if c in sub:
                         found[key] = sub[c]
                         break
-            full = "q" in found
-            need = FULL_ROLES if full else LINEAR_ROLES
-            missing = [k for k in ("attn_norm", "mlp_norm", *need, "gu_gate", "gu_up", "down") if k not in found]
+            if not linear:      # full attention: q | k | v | gate, fused in one tensor or not
+                found.pop("q", None), found.pop("k", None), found.pop("v", None)
+                for c in ("attn_qkv.weight", "attn_qkvz.weight"):
+                    if c in sub:
+                        found["qkv"] = sub[c]
+                        break
+                else:
+                    for key in ("q", "k", "v"):
+                        for c in ROLE_NAMES[key]:
+                            if c in sub:
+                                found[key] = sub[c]
+            missing = [k for k in ("attn_norm", "mlp_norm", *keys, "gu_gate", "gu_up", "down")
+                       if k not in found and not (k in ("q", "k", "v") and "qkv" in found)]
             if missing:
-                raise SystemExit(f"{self.src}: layer {i}: no tensor for {', '.join(missing)}; it has:\n  "
-                                 + "\n  ".join(sorted(sub)))
+                problems.append(f"layer {i}: no tensor for {', '.join(missing)}; it has:\n    "
+                                + "\n    ".join(sorted(sub)))
             roles[i] = found
-            layers[i] = "full_attention" if full else "linear_attention"
-            unused = [n for s, n in sub.items() if n not in found.values()]
+            layers[i] = "linear_attention" if linear else "full_attention"
+            unused = [n for s2, n in sub.items() if n not in found.values()]
             if unused:
                 extra[i] = unused
+        if problems and strict:
+            raise SystemExit(f"{self.src}: " + "\n  ".join(problems))
         # the delta-rule geometry, from the projections when the metadata does not give it
         lin = next((i for i, k in layers.items() if k == "linear_attention"), None)
-        if lin is not None:
+        if lin is not None and "in_qkv" in roles[lin]:
             r = roles[lin]
             qkv, z = self.shape(r["in_qkv"])[0], self.shape(r["in_z"])[0]
             if not self.n_vh:
@@ -236,14 +249,17 @@ class Model:
             if not self.dk:
                 self.dk = z // max(1, self.n_vh)
             self.dv = self.dv or self.dk
-            self.conv_k = self.conv_k or self.shape(r["conv"])[0]
+            self.conv_k = self.conv_k or self.shape(r["conv"])[1]
         return roles, layers, extra
 
-    def _pick(self, cands, what):
+    def _pick(self, cands, what, strict=True):
         for c in cands:
             if c in self.g.tensors:
                 return c
-        raise SystemExit(f"{self.src}: no {what} tensor (tried {cands}); the file has e.g. {sorted(self.g.tensors)[:8]}")
+        if strict:
+            raise SystemExit(f"{self.src}: no {what} tensor (tried {cands}); "
+                             f"the file has e.g. {sorted(self.g.tensors)[:8]}")
+        return None
 
     def shape(self, name):
         return self.g.tensors[name].shape
@@ -266,11 +282,28 @@ class Model:
 
     def qkv(self, i):
         """q | k | v | gate rows: the app's wqkv (Qwen3.5's query projection also makes the output gate)."""
-        r, nh, hd = self.roles[i], self.n_heads, self.head_dim
+        r, nh, hd, nkv = self.roles[i], self.n_heads, self.head_dim, self.n_kv
+        qd, kd = nh * hd, nkv * hd
+        if "qkv" in r:                                   # llama.cpp fuses them: q | k | v (| gate)
+            w = self.mat(r["qkv"])
+            rows = w.shape[0]
+            if rows == 2 * qd + 2 * kd:                  # q | k | v | gate, one after the other
+                return w
+            if rows == 2 * qd + 2 * kd + qd:             # ... and the gate again at the end
+                return np.concatenate([w[:2 * qd + 2 * kd], w[2 * qd + 2 * kd:]])
+            if rows == qd + 2 * kd:                      # q | k | v: the gate is its own tensor
+                gate = self.mat(r["gate"]) if "gate" in r else None
+                return np.concatenate([w, gate]) if gate is not None else w
+            if rows == 2 * nh * hd + 2 * kd:             # per head [query | gate], then k | v
+                qg = w[:2 * qd].reshape(nh, 2, hd, -1)
+                return np.concatenate([qg[:, 0].reshape(qd, -1), w[2 * qd:],
+                                       qg[:, 1].reshape(qd, -1)])
+            raise SystemExit(f"wqkv: {r['qkv']} has {rows} rows: not q|k|v (| gate) for "
+                             f"{nh} heads of {hd} and {nkv} kv heads")
         q = self.mat(r["q"])
-        if q.shape[0] == 2 * nh * hd:                 # one tensor holding, per head, [query | gate]
+        if q.shape[0] == 2 * qd:                         # one tensor holding, per head, [query | gate]
             qg = q.reshape(nh, 2, hd, -1)
-            q, gate = qg[:, 0].reshape(nh * hd, -1), qg[:, 1].reshape(nh * hd, -1)
+            q, gate = qg[:, 0].reshape(qd, -1), qg[:, 1].reshape(qd, -1)
         else:
             gate = self.mat(r["gate"])
         return np.concatenate([q, self.mat(r["k"]), self.mat(r["v"]), gate])
@@ -559,7 +592,11 @@ def mtp(outdir, idxdir, m, keep, size):
 
 def inspect(src, probe_mtp=True):
     t0 = time.time()
-    m = Model(src)
+    try:
+        m = Model(src)
+    except SystemExit as ex:
+        print(f"the reader could not map the file: {ex}")
+        return names_report(src)
     g = m.g
     c = m.config()
     print(f"source: {src}")
@@ -572,12 +609,19 @@ def inspect(src, probe_mtp=True):
     kinds = {k: c["layer_types"].count(k) for k in sorted(set(c["layer_types"]))}
     print(f"layer kinds: {kinds}")
     print("metadata keys: " + ", ".join(sorted(g.meta)))
-    print("\nroles:")
-    full = next(i for i, k in m.layers.items() if k == "full_attention")
-    for i in (0, full):
-        print(f"  layer {i} ({m.layers[i]}):")
+    # the tensors of one layer of each kind, by role, with the shapes the app will see
+    for kind in ("linear_attention", "full_attention"):
+        i = next((i for i, k in m.layers.items() if k == kind), None)
+        if i is None:
+            continue
+        print(f"\nlayer {i} ({kind}):")
         for k, v in m.roles[i].items():
             print(f"    {k:9s} {v:42s} {m.shape(v)}")
+        try:
+            print(f"    -> wqkv {m.qkv(i).shape}" if kind == "full_attention" else
+                  f"    -> w_in {m.w_in(i).shape}, conv {m.conv(i).shape}, A {m.a_matrix(i).shape}")
+        except Exception as ex:  # noqa: BLE001
+            print(f"    -> NOT CONVERTIBLE: {ex}")
     if m.extra:
         print("\ntensors the app does not use (ignored):")
         for i, names in sorted(m.extra.items()):
@@ -615,10 +659,35 @@ def inspect(src, probe_mtp=True):
             missing = [n for n in ("mtp." + v for v in MTP_HF.values()) if n not in st.index]
             print(f"MTP head in {BASE_REPO}: {len(have)} tensors" +
                   (f", MISSING {missing}" if missing else ", all the ones the app needs"))
-            print("  " + ", ".join(sorted(have)[:14]))
+            print("  " + ", ".join(sorted(have)[:16]))
         except Exception as ex:  # noqa: BLE001
             print(f"MTP head in {BASE_REPO}: cannot read the index ({ex})")
     print(f"\ndone in {time.time() - t0:.0f} s; {g.r.n_read / 2**20:.1f} MiB read")
+    return 0
+
+
+def names_report(src):
+    """The file's tensors, by name, when the roles cannot be resolved: one layer of each kind, and the top level."""
+    g = GGUF.open(src)
+    print(f"\nmetadata keys: {', '.join(sorted(g.meta))}")
+    for k in sorted(g.meta):
+        if k != "tokenizer.ggml.tokens" and not k.startswith("tokenizer.ggml.merges"):
+            v = g.meta[k]
+            print(f"  {k} = {v if not isinstance(v, list) or len(v) < 12 else str(v[:12]) + ' ...'}")
+    print("\ntensors:")
+    seen = set()
+    for n, t in g.tensors.items():
+        base = n.split(".", 2)[2] if n.startswith("blk.") else n
+        if n.startswith("blk.") and base in seen:
+            continue
+        seen.add(base)
+        print(f"  {n:44s} {t.type_name:5s} {t.shape}")
+    import tokenizer_bin
+    tok = tokenizer_bin.read(ROOT / "chat" / "assets" / "tokenizer.bin")
+    rep = tokenizer_bin.compare(tok, g.meta.get("tokenizer.ggml.tokens") or [],
+                                g.meta.get("tokenizer.ggml.merges") or [],
+                                g.meta.get("tokenizer.ggml.token_type") or [])
+    print("\n" + rep.text())
     return 0
 
 
