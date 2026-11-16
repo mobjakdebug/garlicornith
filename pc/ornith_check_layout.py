@@ -38,17 +38,14 @@ def main():
     dt_gg = g.tensor(head + "ssm_dt.bias").astype(np.float64)
     dt_hf = st.tensor(L + f"{i}.linear_attn.dt_bias").astype(np.float64)
 
-    # match every GGUF value to the Hugging Face index it came from
-    perm = []
-    for v in a_gg:
-        j = int(np.argmin(np.abs(-np.exp(a_hf) - v)))
-        perm.append(j)
-    perm = np.array(perm)
+    # llama.cpp seems to split the 32 value heads into (16 key heads, 2) and read them the other way round:
+    # gguf = hf.reshape(n_kh, 2, ...).transpose(1, 0, 2), i.e. all the first value heads, then all the second
+    n_kh, n_vh = 16, 32
+    perm = np.arange(n_vh).reshape(n_kh, 2).T.reshape(-1)          # hf index of each gguf head
     print(f"gguf ssm_a   {a_gg[:6]}")
     print(f"hf -exp(Alog){(-np.exp(a_hf))[:6]}")
     print(f"permutation  {perm.tolist()}")
-    print(f"  is a permutation: {sorted(perm.tolist()) == list(range(len(perm)))}")
-    print(f"  identity: {np.array_equal(perm, np.arange(len(perm)))}")
+    print(f"  heads {n_kh} x 2 read the other way: {perm.tolist()}")
     print(f"  ssm_a == -exp(A_log) permuted: {np.allclose(a_gg, (-np.exp(a_hf))[perm], atol=1e-6)}")
     print(f"  dt_bias the same permutation:  {np.allclose(dt_gg, dt_hf[perm], atol=1e-6)}")
 
