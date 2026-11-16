@@ -231,7 +231,7 @@ jobs:
               [ -f "$f" ] && echo "$(sha256sum "$f")"
             done
             df -h /
-          } | tee package.log
+          } | tee summary.txt
 
       - name: keep the package
         if: success()
@@ -247,13 +247,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: package-logs
-          path: ["*.txt", "*.log"]
+          path: "*.txt"
           if-no-files-found: ignore
 
       - name: say why it failed
         if: failure()
         run: |
-          for f in package.txt package.log; do
+          for f in package.txt summary.txt; do
             [ -f "$f" ] || continue
             tail -c 4000 "$f" | sed 's/\\r//g' | while IFS= read -r line; do echo "::error title=package::$line"; done
           done
@@ -265,5 +265,5 @@ jobs:
         run: |
           d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-package"
           mkdir -p "$d"
-          for f in *.txt *.log; do [ -e "$f" ] && cp -f "$f" "$d"/; done
+          for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
           bash ci/publish.sh "$d" "${{ github.workflow }} ${{ github.run_id }} (package)"
