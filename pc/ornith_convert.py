@@ -277,6 +277,22 @@ class Model:
                 "linear_num_key_heads": self.n_kh, "linear_num_value_heads": self.n_vh,
                 "linear_key_head_dim": self.dk, "linear_value_head_dim": self.dv}
 
+    def head_order(self):
+        """Hugging Face's index of each of the GGUF's value heads.
+
+        llama.cpp groups the delta rule's value heads the other way round: it reads them as (n_kh key heads, 2)
+        transposed, so its head i is Hugging Face's i // 2 + (i % 2) * n_kh (depthwise: the app's kernels, like
+        Hugging Face's, keep a head's 128 values together). pc/ornith_check_layout.py shows it for one layer.
+        """
+        n = self.n_vh
+        return np.array([j // 2 + (j % 2) * (n // 2) for j in range(n)])
+
+    def hf_heads(self, x, axis, block=1):
+        """A GGUF delta-rule tensor's value-head axis -> Hugging Face's order (block = the head's size)."""
+        inv = self.head_order()
+        idx = inv if block == 1 else (inv[:, None] * block + np.arange(block)).ravel()
+        return np.take(x, idx, axis=axis)
+
     def mat(self, name):
         """A whole tensor as float32: [rows, cols], or [n] for a vector."""
         t = self.g.tensors[name]
@@ -313,18 +329,33 @@ class Model:
         return np.concatenate([q, self.mat(r["k"]), self.mat(r["v"]), gate])
 
     def w_in(self, i):
-        r = self.roles[i]
-        return np.concatenate([self.mat(r["in_qkv"]), self.mat(r["in_z"]), self.mat(r["in_b"]), self.mat(r["in_a"])])
+        """q | k | v | z | b | a in Hugging Face's order (the delta rule's projections, value heads unpermuted)."""
+        r, vd = self.roles[i], self.n_vh * self.dv
+        qkv = self.mat(r["in_qkv"])
+        qkv = np.concatenate([qkv[:-vd], self.hf_heads(qkv[-vd:], 0, self.dv)])   # the v rows
+        z = self.hf_heads(self.mat(r["in_z"]), 0, self.dv)
+        b = self.hf_heads(self.mat(r["in_b"]), 0)
+        a = self.hf_heads(self.mat(r["in_a"]), 0)
+        return np.concatenate([qkv, z, b, a])
+
+    def wout(self, i):
+        return self.hf_heads(self.mat(self.roles[i]["wout"]), 1, self.dv)         # the value columns
 
     def a_matrix(self, i):
-        """The delta rule's -exp(A_log); llama.cpp stores either A_log or the transformed values."""
-        w = self.mat(self.roles[i]["A"]).reshape(-1).astype(np.float32)
+        """The delta rule's decay: llama.cpp already stores -exp(A_log) (checked against A_log), in its head order.
+
+        A_log (not this) would be positive for a decay near 1: if a future GGUF gives one, say so rather than
+        quietly decaying the wrong way.
+        """
+        w = self.hf_heads(self.mat(self.roles[i]["A"]).reshape(-1).astype(np.float32), 0)
         if np.any(w > 0):
+            print(f"  NOTE: blk.{i}.ssm_a looks like A_log, not -exp(A_log): taking -exp", flush=True)
             return -np.exp(w)
         return w
 
     def conv(self, i):
-        w = self.mat(self.roles[i]["conv"])
+        w, vd = self.mat(self.roles[i]["conv"]), self.n_vh * self.dv
+        w = np.concatenate([w[:-vd], self.hf_heads(w[-vd:], 0, self.dv)])         # the v channels
         k = self.conv_k or w.shape[1]
         return w.reshape(-1, k)
 
@@ -429,23 +460,25 @@ def convert(src, outdir, idxdir, q3_spec, with_mtp=True):
 
     print(f"{NAME}: {m.n_layers} layers ({c['layer_types'].count('linear_attention')} delta-net), "
           f"hidden {m.hidden}, vocab {m.vocab}, gate/up in q3s: {sorted(q3_layers)}", flush=True)
-    f32("final_norm", 1.0 + m.mat(m.roles["final_norm"]).reshape(-1))
+    f32("final_norm", m.mat(m.roles["final_norm"]).reshape(-1))
     for i in range(m.n_layers):
         r, kind = m.roles[i], m.layers[i]
-        f32(f"{i}.attn_norm", 1.0 + m.mat(r["attn_norm"]).reshape(-1))
-        f32(f"{i}.mlp_norm", 1.0 + m.mat(r["mlp_norm"]).reshape(-1))
+        # the norms: the GGUF already holds them as 1 + w, which is what the app's kernels add, except the delta
+        # rule's ssm_norm, which is a plain weight (and is plain in the GGUF too)
+        f32(f"{i}.attn_norm", m.mat(r["attn_norm"]).reshape(-1))
+        f32(f"{i}.mlp_norm", m.mat(r["mlp_norm"]).reshape(-1))
         if kind == "full_attention":
-            f32(f"{i}.q_norm", 1.0 + m.mat(r["q_norm"]).reshape(-1))
-            f32(f"{i}.k_norm", 1.0 + m.mat(r["k_norm"]).reshape(-1))
+            f32(f"{i}.q_norm", m.mat(r["q_norm"]).reshape(-1))
+            f32(f"{i}.k_norm", m.mat(r["k_norm"]).reshape(-1))
             put_q4s(f"{i}.wqkv", m.qkv(i))
             put_q4s(f"{i}.wo", m.mat(r["o"]))
         else:
             put_q4s(f"{i}.w_in", m.w_in(i))
             f32(f"{i}.conv", m.conv(i))
             f32(f"{i}.A", m.a_matrix(i))
-            f32(f"{i}.dt_bias", m.mat(r["dt"]).reshape(-1))
+            f32(f"{i}.dt_bias", m.hf_heads(m.mat(r["dt"]).reshape(-1), 0))
             f32(f"{i}.gnorm", m.mat(r["gnorm"]).reshape(-1))
-            put_q4s(f"{i}.wout", m.mat(r["wout"]))
+            put_q4s(f"{i}.wout", m.wout(i))
         gu = np.concatenate([m.mat(r["gu_gate"]), m.mat(r["gu_up"])])
         (put_q3s if i in q3_layers else put_q4s)(f"{i}.wgu", gu)
         put_q4s(f"{i}.wdown", m.mat(r["down"]))
@@ -586,13 +619,13 @@ def mtp(outdir, idxdir, m, keep, size):
         wb, sb, rows = q4s(w)
         put(key, wb + sb, rows=rows, cols=w.shape[1], scales=len(wb), fmt="q4s")
 
-    f32("pre_e", 1.0 + mat("nextn.enorm.weight"))
-    f32("pre_h", 1.0 + mat("nextn.hnorm.weight"))
+    f32("pre_e", mat("nextn.enorm.weight"))        # (llama.cpp stores norms as 1 + w: see convert)
+    f32("pre_h", mat("nextn.hnorm.weight"))
     q4s_("fc", mat("nextn.eh_proj.weight"))
-    f32("attn_norm", 1.0 + mat("attn_norm.weight"))
-    f32("mlp_norm", 1.0 + mat("post_attention_norm.weight"))
-    f32("q_norm", 1.0 + mat("attn_q_norm.weight"))
-    f32("k_norm", 1.0 + mat("attn_k_norm.weight"))
+    f32("attn_norm", mat("attn_norm.weight"))
+    f32("mlp_norm", mat("post_attention_norm.weight"))
+    f32("q_norm", mat("attn_q_norm.weight"))
+    f32("k_norm", mat("attn_k_norm.weight"))
     q = mat("attn_q.weight")
     if q.shape[0] == 2 * nh * hd:             # per head [query | gate], as in the model's own attention
         qg = q.reshape(nh, 2, hd, -1)
@@ -603,7 +636,7 @@ def mtp(outdir, idxdir, m, keep, size):
     q4s_("wo", mat("attn_output.weight"))
     q4s_("wgu", np.concatenate([mat("ffn_gate.weight"), mat("ffn_up.weight")]))
     q4s_("wdown", mat("ffn_down.weight"))
-    f32("norm", 1.0 + mat("nextn.shared_head_norm.weight"))
+    f32("norm", mat("nextn.shared_head_norm.weight"))
     wsize = out.tell()
     # the draft's own tokens: the input-embedding rows of the first ND kept tokens, in lm_head row order
     ecols = m.shape(m.roles["embed"])[1]
@@ -701,72 +734,12 @@ def inspect(src, probe_mtp=True):
             n.split(".", 2)[2] for n in g.tensors if n.startswith(f"blk.{m.mtp_block}."))))
     else:
         print("  no nextn_predict_layers: no speculative decoding")
-    # ---- does the GGUF hold the weights Hugging Face's checkpoint does? (a few rows of each kind of tensor, read
-    # straight from ornith-ai/Ornith-1.5-9B: it is what catches a transposed or reordered tensor before a 40-minute run)
+    # ---- what the converter reads, against Hugging Face's checkpoint (the order of the delta rule's heads, the
+    # norms' 1 + w, and a row of each kind of matrix): what catches a mistake before a 40-minute conversion
     if probe_mtp:
-        B = f"blk.{m.mtp_block}." if m.mtp_block is not None else "blk.0."
-        L = "model.language_model.layers."
-        checks = [
-            ("token_embd.weight", "model.language_model.embed_tokens.weight"),
-            ("output_norm.weight", "model.language_model.norm.weight"),
-            ("output.weight", "lm_head.weight"),
-            ("blk.0.attn_norm.weight", L + "0.input_layernorm.weight"),
-            ("blk.0.post_attention_norm.weight", L + "0.post_attention_layernorm.weight"),
-            ("blk.0.attn_qkv.weight", L + "0.linear_attn.in_proj_qkv.weight"),
-            ("blk.0.attn_gate.weight", L + "0.linear_attn.in_proj_z.weight"),
-            ("blk.0.ssm_beta.weight", L + "0.linear_attn.in_proj_b.weight"),
-            ("blk.0.ssm_alpha.weight", L + "0.linear_attn.in_proj_a.weight"),
-            ("blk.0.ssm_conv1d.weight", L + "0.linear_attn.conv1d.weight"),
-            ("blk.0.ssm_out.weight", L + "0.linear_attn.out_proj.weight"),
-            ("blk.0.ffn_gate.weight", L + "0.mlp.gate_proj.weight"),
-            ("blk.0.ffn_down.weight", L + "0.mlp.down_proj.weight"),
-            ("blk.3.attn_q.weight", L + "3.self_attn.q_proj.weight"),
-            ("blk.3.attn_k.weight", L + "3.self_attn.k_proj.weight"),
-            ("blk.3.attn_output.weight", L + "3.self_attn.o_proj.weight"),
-            (B + "nextn.enorm.weight", "mtp.pre_fc_norm_embedding.weight"),
-            (B + "nextn.hnorm.weight", "mtp.pre_fc_norm_hidden.weight"),
-            (B + "nextn.eh_proj.weight", "mtp.fc.weight"),
-            (B + "nextn.shared_head_norm.weight", "mtp.norm.weight"),
-            (B + "attn_q.weight", "mtp.layers.0.self_attn.q_proj.weight"),
-            (B + "ffn_up.weight", "mtp.layers.0.mlp.up_proj.weight"),
-            ("blk.0.ssm_norm.weight", L + "0.linear_attn.norm.weight"),
-            ("blk.0.ssm_dt.bias", L + "0.linear_attn.dt_bias"),
-            ("blk.3.attn_q_norm.weight", L + "3.self_attn.q_norm.weight"),
-            ("blk.3.attn_k_norm.weight", L + "3.self_attn.k_norm.weight"),
-            ("blk.3.post_attention_norm.weight", L + "3.post_attention_layernorm.weight"),
-        ]
-        print("\nthe GGUF against Hugging Face's checkpoint (first rows):")
         try:
-            st = Safetensors()
-            for gg, hf in checks:
-                if gg not in g.tensors or not st.has(hf):
-                    print(f"  {gg:38s} {'missing in the GGUF' if gg not in g.tensors else 'missing in ' + BASE_REPO}")
-                    continue
-                a = g.rows(gg, 0, min(4, m.shape(gg)[0])) if len(m.shape(gg)) == 2 else m.mat(gg)[:4]
-                b = st.rows(hf, 0, 4)
-                ok = a.shape == b.shape and np.allclose(a, b, atol=2e-2, rtol=2e-2)
-                extra = ""
-                if not ok and a.size == b.size:
-                    d = (np.asarray(a, np.float64) - np.asarray(b, np.float64)).ravel()
-                    extra = f"  (max |diff| {np.abs(d).max():.5g}, diff - 1 = {np.abs(d - 1).max():.3g})"
-                print(f"  {gg:34s} vs {hf:42s} {'same' if ok else 'DIFFERENT'}{extra}"
-                      + ("" if ok else f"\n      gguf {np.asarray(a).ravel()[:4]} {np.shape(a)}"
-                                       f"\n      hf   {np.asarray(b).ravel()[:4]} {np.shape(b)}"))
-            # the delta rule's A: llama.cpp may store -exp(A_log) instead of A_log
-            for hf in (L + "0.linear_attn.A_log",):
-                if st.has(hf) and "blk.0.ssm_a" in g.tensors:
-                    a = m.mat("blk.0.ssm_a").ravel()
-                    log = st.rows(hf).ravel()
-                    print(f"  blk.0.ssm_a: gguf {a[:4]} ({a.size}); hf A_log {log[:4]} ({log.size})")
-                    print(f"    -exp(A_log) {(-np.exp(log))[:4]}")
-                    print(f"    => {'already -exp(A_log)' if np.allclose(a, -np.exp(log), atol=1e-3) else 'A_log as it is'}")
-            # the merge table, in the same rank order?
-            tok_cmp = tokenizer_bin.compare(tok, g.meta.get("tokenizer.ggml.tokens") or [],
-                                            g.meta.get("tokenizer.ggml.merges") or [],
-                                            g.meta.get("tokenizer.ggml.token_type") or [])
-            for line in tok_cmp.lines:
-                if "merge" in line:
-                    print("  " + line.strip())
+            import ornith_check_layout
+            ornith_check_layout.report(g, 0)
         except (Exception, SystemExit) as ex:  # noqa: BLE001
             print(f"  cannot compare with {BASE_REPO}: {ex}")
     print(f"\ndone in {time.time() - t0:.0f} s; {g.r.n_read / 2**20:.1f} MiB read")

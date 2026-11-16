@@ -1,10 +1,14 @@
-"""Which order does the GGUF keep the delta rule's value heads in? (a probe for pc/ornith_convert.py)
+"""Is the GGUF's weight layout the one the app's kernels expect? (a probe for pc/ornith_convert.py)
 
 llama.cpp reorders Qwen3.5's Gated DeltaNet tensors so that its own kernels find the value heads grouped by key
-head; Hugging Face's checkpoint (which the app's kernels were converted from) has another order. This compares the
-small per-head tensors of one layer - the 32 decay values, dt_bias, and the beta / alpha projections - and reports
-the permutation, then checks the same permutation on the big ones: `ssm_out`'s columns, `attn_gate`'s rows,
-`attn_qkv`'s value rows and `ssm_conv1d`'s channels.
+head, and it writes every RMSNorm as 1 + w. Hugging Face's checkpoint - which the app's original 9B was converted
+from - has the heads the other way round and stores the norms as w. This compares one layer's tensors with
+ornith-ai/Ornith-1.5-9B and says, for each, what the GGUF holds:
+
+  - the 32 decay values, dt_bias, beta and alpha: the head permutation (n_kh key heads, 2, transposed)
+  - ssm_out's columns, attn_gate's rows, attn_qkv's value rows, ssm_conv1d's value channels: the same, in 128-blocks
+  - the norms: 1 + w, except the delta rule's own norm, which is plain w
+  - the matrices the conversion copies as they are (embeddings, output head, attention, MLP): equal
 
   python pc/ornith_check_layout.py [--gguf PATH|URL] [--layer 0]
 """
@@ -17,10 +21,76 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from ornith_convert import HF, QUANTS, Safetensors  # noqa: E402
+from ornith_convert import BASE_REPO, HF, QUANTS, Safetensors  # noqa: E402
 from gguf import GGUF  # noqa: E402
 
 L = "model.language_model.layers."
+
+
+def report(g, layer=0):
+    """Print the comparison for one layer; returns True when every check holds."""
+    st = Safetensors()
+    i = layer
+    head = f"blk.{i}."
+    ok = True
+
+    def say(label, good, detail=""):
+        nonlocal ok
+        ok = ok and bool(good)
+        print(f"  {label:56s} {'yes' if good else 'NO'}{detail}")
+
+    # the order of the value heads, from the 32 decay values
+    a_gg = g.tensor(head + "ssm_a").astype(np.float64)
+    a_hf = st.tensor(L + f"{i}.linear_attn.A_log").astype(np.float64)
+    n_vh = a_gg.size
+    # the GGUF's head i holds Hugging Face's head perm[i]: all the first value heads, then all the second
+    perm = np.arange(n_vh).reshape(n_vh // 2, 2).T.ravel()
+    blocks = (perm[:, None] * 128 + np.arange(128)).ravel()          # the same, 128 values a head
+    print(f"delta rule of layer {i}: {n_vh} value heads; the GGUF's head i holds Hugging Face's "
+          f"{perm[:4].tolist()}... (all the first, then all the second of each pair)")
+    say("ssm_a == -exp(A_log) in that order", np.allclose(a_gg, (-np.exp(a_hf))[perm], atol=1e-5))
+    say("ssm_dt.bias in that order",
+        np.allclose(g.tensor(head + "ssm_dt.bias"), st.tensor(L + f"{i}.linear_attn.dt_bias")[perm], atol=1e-5))
+    for name, hf_name, axis, idx in (("ssm_beta.weight", "in_proj_b.weight", 0, perm),
+                                     ("ssm_alpha.weight", "in_proj_a.weight", 0, perm),
+                                     ("attn_gate.weight", "in_proj_z.weight", 0, blocks),
+                                     ("ssm_out.weight", "out_proj.weight", 1, blocks)):
+        gg = g.tensor(head + name).astype(np.float64)
+        hf = st.tensor(L + f"{i}.linear_attn.{hf_name}").astype(np.float64)
+        got = np.take(hf, idx, axis=axis) if gg.shape == hf.shape else None
+        say(f"{name} in that order", got is not None and np.allclose(gg, got, atol=2e-2))
+
+    qkv_gg = g.tensor(head + "attn_qkv.weight").astype(np.float64)
+    qkv_hf = st.tensor(L + f"{i}.linear_attn.in_proj_qkv.weight").astype(np.float64)
+    qk = qkv_hf.shape[0] - 4096
+    say("attn_qkv q|k rows as they are", np.allclose(qkv_gg[:qk], qkv_hf[:qk], atol=2e-2))
+    say("attn_qkv v rows in that order", np.allclose(qkv_gg[qk:], qkv_hf[qk:][blocks], atol=2e-2))
+    conv_gg = g.tensor(head + "ssm_conv1d.weight").astype(np.float64)
+    conv_hf = st.tensor(L + f"{i}.linear_attn.conv1d.weight").astype(np.float64).reshape(conv_gg.shape[0], -1)
+    say("ssm_conv1d v channels in that order", np.allclose(conv_gg[qk:], conv_hf[qk:][blocks], atol=2e-2))
+
+    # the norms: 1 + w in the GGUF, except the delta rule's
+    for gg_name, hf_name, plus_one in (
+            ("output_norm.weight", "model.language_model.norm.weight", True),
+            (head + "attn_norm.weight", L + f"{i}.input_layernorm.weight", True),
+            (head + "post_attention_norm.weight", L + f"{i}.post_attention_layernorm.weight", True),
+            (head + "ssm_norm.weight", L + f"{i}.linear_attn.norm.weight", False)):
+        gg = g.tensor(gg_name).astype(np.float64)
+        hf = st.tensor(hf_name).astype(np.float64)
+        want = hf + 1.0 if plus_one else hf
+        say(f"{gg_name.split('.', 2)[-1] if gg_name.startswith('blk') else gg_name} is "
+            f"{'1 + w' if plus_one else 'w'} as the app wants it", np.allclose(gg, want, atol=2e-3))
+    # the tensors the conversion copies untouched
+    for gg_name, hf_name in (("token_embd.weight", "model.language_model.embed_tokens.weight"),
+                             ("output.weight", "lm_head.weight"),
+                             (f"blk.0.ffn_gate.weight", L + "0.mlp.gate_proj.weight"),
+                             (f"blk.3.attn_q.weight", L + "3.self_attn.q_proj.weight"),
+                             (f"blk.3.attn_output.weight", L + "3.self_attn.o_proj.weight")):
+        a = g.rows(gg_name, 0, 4)
+        b = st.rows(hf_name, 0, 4)
+        say(f"{gg_name} as it is", a.shape == b.shape and np.allclose(a, b, atol=2e-2))
+    print("  => " + ("the layout is the one the converter assumes" if ok else "SOMETHING IS NOT AS EXPECTED"))
+    return ok
 
 
 def main():
@@ -28,79 +98,7 @@ def main():
     ap.add_argument("--gguf", default=HF + QUANTS["bf16"])
     ap.add_argument("--layer", type=int, default=0)
     args = ap.parse_args()
-    g = GGUF.open(args.gguf)
-    st = Safetensors()
-    i = args.layer
-    head = f"blk.{i}."
-
-    a_gg = g.tensor(head + "ssm_a").astype(np.float64)
-    a_hf = st.tensor(L + f"{i}.linear_attn.A_log").astype(np.float64)
-    dt_gg = g.tensor(head + "ssm_dt.bias").astype(np.float64)
-    dt_hf = st.tensor(L + f"{i}.linear_attn.dt_bias").astype(np.float64)
-
-    # llama.cpp seems to split the 32 value heads into (16 key heads, 2) and read them the other way round:
-    # gguf = hf.reshape(n_kh, 2, ...).transpose(1, 0, 2), i.e. all the first value heads, then all the second
-    n_kh, n_vh = 16, 32
-    perm = np.arange(n_vh).reshape(n_kh, 2).T.reshape(-1)          # hf index of each gguf head
-    print(f"gguf ssm_a   {a_gg[:6]}")
-    print(f"hf -exp(Alog){(-np.exp(a_hf))[:6]}")
-    print(f"permutation  {perm.tolist()}")
-    print(f"  heads {n_kh} x 2 read the other way: {perm.tolist()}")
-    print(f"  ssm_a == -exp(A_log) permuted: {np.allclose(a_gg, (-np.exp(a_hf))[perm], atol=1e-6)}")
-    print(f"  dt_bias the same permutation:  {np.allclose(dt_gg, dt_hf[perm], atol=1e-6)}")
-
-    for name, hf_name in (("ssm_beta.weight", "in_proj_b.weight"), ("ssm_alpha.weight", "in_proj_a.weight"),
-                          ("ssm_out.weight", "out_proj.weight"), ("attn_gate.weight", "in_proj_z.weight")):
-        gg = g.tensor(head + name).astype(np.float64)
-        hf = st.tensor(L + f"{i}.linear_attn.{hf_name}").astype(np.float64)
-        print(f"\n{name}: {gg.shape} gguf, {hf.shape} hf")
-        if gg.shape == hf.shape:
-            same = np.isclose(gg, hf, atol=2e-2).mean()
-            print(f"  as it is: {100 * same:.1f}% of the values equal")
-        # rows permuted (a projection over the value heads) or columns permuted (its output)
-        if gg.shape[0] == perm.size and gg.shape[1] != perm.size:
-            print(f"  rows permuted by perm: {np.allclose(gg, hf[perm], atol=2e-2)}")
-        if gg.shape[1] == perm.size and gg.shape[0] != perm.size:
-            print(f"  cols permuted by perm: {np.allclose(gg, hf[:, perm], atol=2e-2)}")
-        if gg.shape[0] == hf.shape[0] and gg.shape[0] % 128 == 0 and gg.shape[1] == hf.shape[1]:
-            for block in (128,):
-                blocks = gg.shape[0] // block
-                if blocks == perm.size:
-                    idx = (np.arange(blocks)[:, None] * block + np.arange(block)).ravel()
-                    src = (perm[:, None] * block + np.arange(block)).ravel()
-                    print(f"  rows permuted in {block}-blocks ({blocks} of them): "
-                          f"{np.allclose(gg[idx], hf[src], atol=2e-2)}")
-        if gg.shape[1] == hf.shape[1] and gg.shape[1] % 128 == 0 and gg.shape[0] == hf.shape[0]:
-            blocks = gg.shape[1] // 128
-            if blocks == perm.size:
-                idx = (np.arange(blocks)[None, :] * 128 + np.arange(128)[:, None]).ravel()
-                src = (perm[None, :] * 128 + np.arange(128)[:, None]).ravel()
-                print(f"  cols permuted in 128-blocks ({blocks} of them): "
-                      f"{np.allclose(gg[:, idx], hf[:, src], atol=2e-2)}")
-
-    # the fused input projection: q | k | v, with the value rows (the last 4096) permuted?
-    qkv_gg = g.tensor(head + "attn_qkv.weight").astype(np.float64)
-    qkv_hf = st.tensor(L + f"{i}.linear_attn.in_proj_qkv.weight").astype(np.float64)
-    nk = qkv_hf.shape[0] // 2 - 4096 // 2           # key rows: (out - value) / 2
-    val = qkv_hf.shape[0] - (qkv_hf.shape[0] - 4096) // 2 - 4096
-    qk = (qkv_hf.shape[0] - 4096)
-    print(f"\nattn_qkv: {qkv_gg.shape} gguf, {qkv_hf.shape} hf; key rows {qk} (q and k), value rows 4096")
-    print(f"  q|k part as it is: {np.allclose(qkv_gg[:qk], qkv_hf[:qk], atol=2e-2)}")
-    blocks = 4096 // 128
-    idx = (np.arange(blocks)[:, None] * 128 + np.arange(128)).ravel()
-    src = (perm[:, None] * 128 + np.arange(128)).ravel()
-    print(f"  v part with 128-blocks permuted: {np.allclose(qkv_gg[qk:], qkv_hf[qk:][src], atol=2e-2)}")
-    print(f"  v part as it is: {np.allclose(qkv_gg[qk:], qkv_hf[qk:], atol=2e-2)}")
-
-    conv_gg = g.tensor(head + "ssm_conv1d.weight").astype(np.float64)
-    conv_hf = st.tensor(L + f"{i}.linear_attn.conv1d.weight").astype(np.float64).reshape(conv_gg.shape[0], -1)
-    print(f"\nssm_conv1d: {conv_gg.shape} gguf, {conv_hf.shape} hf")
-    print(f"  as it is: {np.allclose(conv_gg, conv_hf, atol=2e-2)}")
-    qk2 = conv_hf.shape[0] - 4096
-    src = (perm[:, None] * 128 + np.arange(128)).ravel()
-    print(f"  channels {qk2}.. permuted in 128-blocks: "
-          f"{np.allclose(conv_gg[qk2:], conv_hf[qk2:][src], atol=2e-2)}")
-    return 0
+    return 0 if report(GGUF.open(args.gguf), args.layer) else 1
 
 
 if __name__ == "__main__":
