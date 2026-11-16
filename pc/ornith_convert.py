@@ -178,7 +178,7 @@ class Model:
         self.g = GGUF.open(src)
         m = self.g.meta
         self.vocab = len(m.get("tokenizer.ggml.tokens") or [])
-        self.n_layers = int(m.get("qwen35.block_count", 0))
+        self.n_blocks = int(m.get("qwen35.block_count", 0))
         self.hidden = int(m.get("qwen35.embedding_length", 0))
         self.inter = int(m.get("qwen35.feed_forward_length", 0))
         self.n_heads = int(m.get("qwen35.attention.head_count", 0))
@@ -191,11 +191,15 @@ class Model:
         self.dk = int(m.get("qwen35.ssm.state_size") or 0)
         self.dv = self.dk
         self.conv_k = int(m.get("qwen35.ssm.conv_kernel") or 0)
+        # llama.cpp writes the MTP head's layer after the model's own: the last nextn_predict_layers blocks are its
+        self.nextn = int(m.get("qwen35.nextn_predict_layers") or 0)
+        self.n_layers = self.n_blocks - self.nextn
         for k, v in (("layers", self.n_layers), ("hidden", self.hidden), ("heads", self.n_heads),
                      ("head_dim", self.head_dim)):
             if not v:
                 raise SystemExit(f"{self.src}: the metadata has no {k}: keys are {sorted(m)}")
         self.roles, self.layers, self.extra = self._classify()
+        self.mtp_block = self.n_blocks - 1 if self.nextn else None
 
     def _classify(self, strict=True):
         roles = {}
@@ -274,10 +278,10 @@ class Model:
                 "linear_key_head_dim": self.dk, "linear_value_head_dim": self.dv}
 
     def mat(self, name):
-        """A whole 2-D tensor as float32."""
+        """A whole tensor as float32: [rows, cols], or [n] for a vector."""
         t = self.g.tensors[name]
         if len(t.shape) != 2:
-            raise SystemExit(f"{name}: not 2-D ({t.shape})")
+            return self.g.tensor(name)
         return self.g.rows(name, 0, t.shape[0])
 
     def qkv(self, i):
@@ -608,6 +612,14 @@ def inspect(src, probe_mtp=True):
     print(f"delta net: key heads={m.n_kh} value heads={m.n_vh} key dim={m.dk} value dim={m.dv} conv={m.conv_k}")
     kinds = {k: c["layer_types"].count(k) for k in sorted(set(c["layer_types"]))}
     print(f"layer kinds: {kinds}")
+    for k in ("qwen35.block_count", "qwen35.nextn_predict_layers", "qwen35.full_attention_interval",
+              "qwen35.context_length", "qwen35.rope.dimension_count", "qwen35.rope.dimension_sections",
+              "qwen35.ssm.inner_size", "qwen35.ssm.group_count", "qwen35.ssm.time_step_rank",
+              "qwen35.attention.value_length", "tokenizer.ggml.pre", "tokenizer.ggml.eos_token_id",
+              "tokenizer.ggml.padding_token_id", "general.file_type", "general.size_label"):
+        if k in g.meta:
+            v = g.meta[k]
+            print(f"  {k} = {v if not isinstance(v, list) or len(v) < 16 else str(v[:16]) + ' ...'}")
     print("metadata keys: " + ", ".join(sorted(g.meta)))
     # the tensors of one layer of each kind, by role, with the shapes the app will see
     for kind in ("linear_attention", "full_attention"):
@@ -620,7 +632,7 @@ def inspect(src, probe_mtp=True):
         try:
             print(f"    -> wqkv {m.qkv(i).shape}" if kind == "full_attention" else
                   f"    -> w_in {m.w_in(i).shape}, conv {m.conv(i).shape}, A {m.a_matrix(i).shape}")
-        except Exception as ex:  # noqa: BLE001
+        except (Exception, SystemExit) as ex:  # noqa: BLE001
             print(f"    -> NOT CONVERTIBLE: {ex}")
     if m.extra:
         print("\ntensors the app does not use (ignored):")
@@ -649,10 +661,13 @@ def inspect(src, probe_mtp=True):
     print(rep.text())
     keep = np.load(KEEP)
     print(f"keep list: {len(keep)} ids, {int(keep.min())}..{int(keep.max())}, {len(np.unique(keep))} unique")
-    # ---- the MTP head
+    # ---- the MTP head: llama.cpp keeps it after the model's layers: blk.<last>.* plus nextn.*
     in_gguf = [n for n in g.tensors if n.lower().startswith(("nextn", "mtp"))]
-    print(f"MTP head in the GGUF: {in_gguf if in_gguf else 'no'}")
-    if probe_mtp and not in_gguf:
+    print(f"\nMTP head in the GGUF: {sorted(in_gguf) if in_gguf else 'no'}")
+    if m.mtp_block is not None:
+        print(f"  its layer: blk.{m.mtp_block}.* " + ", ".join(sorted(
+            n.split(".", 2)[2] for n in g.tensors if n.startswith(f"blk.{m.mtp_block}."))))
+    if probe_mtp and in_gguf:
         try:
             st = Safetensors()
             have = [n for n in st.index if n.startswith("mtp.")]
@@ -660,7 +675,20 @@ def inspect(src, probe_mtp=True):
             print(f"MTP head in {BASE_REPO}: {len(have)} tensors" +
                   (f", MISSING {missing}" if missing else ", all the ones the app needs"))
             print("  " + ", ".join(sorted(have)[:16]))
-        except Exception as ex:  # noqa: BLE001
+            # does the GGUF's copy hold the same weights? (4x4 values of the projection, and a norm)
+            for role, sf_name in (("nextn.eh_proj.weight", "fc.weight"), ("nextn.enorm.weight",
+                                                                        "pre_fc_norm_embedding.weight")):
+                if role not in g.tensors:
+                    continue
+                a = m.mat(role)
+                b = st.tensor("mtp." + sf_name)
+                if a.ndim == 2:
+                    a, b = a[:4, :4], b[:4, :4]
+                else:
+                    a, b = a[:4], b[:4]
+                print(f"  {role} vs mtp.{sf_name}: " + ("same" if np.allclose(a, b, atol=1e-6)
+                                                        else f"DIFFERENT\n    {a.ravel()[:4]}\n    {b.ravel()[:4]}"))
+        except (Exception, SystemExit) as ex:  # noqa: BLE001
             print(f"MTP head in {BASE_REPO}: cannot read the index ({ex})")
     print(f"\ndone in {time.time() - t0:.0f} s; {g.r.n_read / 2**20:.1f} MiB read")
     return 0

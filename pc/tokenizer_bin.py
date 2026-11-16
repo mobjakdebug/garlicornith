@@ -64,9 +64,12 @@ def compare(tok, gguf_tokens, gguf_merges, gguf_types):
     if not gguf_tokens:
         return Report(["GGUF: no token list in the metadata"], False)
     lines.append(f"GGUF: {len(gguf_tokens)} tokens, {len(gguf_merges)} merges")
-    if len(gguf_tokens) != tok.n_vocab:
-        lines.append(f"  token count differs: {len(gguf_tokens)} vs {tok.n_vocab}")
+    if len(gguf_tokens) < tok.n_vocab:
+        lines.append(f"  the GGUF has fewer tokens than the app's file: {len(gguf_tokens)} < {tok.n_vocab}")
         ok = False
+    elif len(gguf_tokens) > tok.n_vocab:
+        lines.append(f"  the GGUF has {len(gguf_tokens) - tok.n_vocab} ids past the app's vocabulary (unused: the "
+                     f"keep list stops at {tok.n_vocab})")
 
     def as_bytes(s):
         """A GGUF token string -> the bytes it stands for (byte-to-unicode, or UTF-8 for the special ones)."""
