@@ -729,6 +729,11 @@ def inspect(src, probe_mtp=True):
             (B + "nextn.shared_head_norm.weight", "mtp.norm.weight"),
             (B + "attn_q.weight", "mtp.layers.0.self_attn.q_proj.weight"),
             (B + "ffn_up.weight", "mtp.layers.0.mlp.up_proj.weight"),
+            ("blk.0.ssm_norm.weight", L + "0.linear_attn.norm.weight"),
+            ("blk.0.ssm_dt.bias", L + "0.linear_attn.dt_bias"),
+            ("blk.3.attn_q_norm.weight", L + "3.self_attn.q_norm.weight"),
+            ("blk.3.attn_k_norm.weight", L + "3.self_attn.k_norm.weight"),
+            ("blk.3.post_attention_norm.weight", L + "3.post_attention_layernorm.weight"),
         ]
         print("\nthe GGUF against Hugging Face's checkpoint (first rows):")
         try:
@@ -740,15 +745,21 @@ def inspect(src, probe_mtp=True):
                 a = g.rows(gg, 0, min(4, m.shape(gg)[0])) if len(m.shape(gg)) == 2 else m.mat(gg)[:4]
                 b = st.rows(hf, 0, 4)
                 ok = a.shape == b.shape and np.allclose(a, b, atol=2e-2, rtol=2e-2)
-                print(f"  {gg:38s} vs {hf:44s} {'same' if ok else 'DIFFERENT'}"
-                      + ("" if ok else f"\n      gguf {np.asarray(a).ravel()[:4]}\n      hf   {np.asarray(b).ravel()[:4]}"))
+                extra = ""
+                if not ok and a.size == b.size:
+                    d = (np.asarray(a, np.float64) - np.asarray(b, np.float64)).ravel()
+                    extra = f"  (max |diff| {np.abs(d).max():.5g}, diff - 1 = {np.abs(d - 1).max():.3g})"
+                print(f"  {gg:34s} vs {hf:42s} {'same' if ok else 'DIFFERENT'}{extra}"
+                      + ("" if ok else f"\n      gguf {np.asarray(a).ravel()[:4]} {np.shape(a)}"
+                                       f"\n      hf   {np.asarray(b).ravel()[:4]} {np.shape(b)}"))
             # the delta rule's A: llama.cpp may store -exp(A_log) instead of A_log
             for hf in (L + "0.linear_attn.A_log",):
                 if st.has(hf) and "blk.0.ssm_a" in g.tensors:
-                    a = m.mat("blk.0.ssm_a")
-                    log = st.rows(hf, 0, 4).ravel()
-                    print(f"  blk.0.ssm_a: gguf {a[:4]}; hf A_log {log[:4]}; hf -exp(A_log) {(-np.exp(log))[:4]}"
-                          f"  => {'-exp(A_log)' if np.allclose(a[:4], -np.exp(log), atol=1e-3) else 'A_log'}")
+                    a = m.mat("blk.0.ssm_a").ravel()
+                    log = st.rows(hf).ravel()
+                    print(f"  blk.0.ssm_a: gguf {a[:4]} ({a.size}); hf A_log {log[:4]} ({log.size})")
+                    print(f"    -exp(A_log) {(-np.exp(log))[:4]}")
+                    print(f"    => {'already -exp(A_log)' if np.allclose(a, -np.exp(log), atol=1e-3) else 'A_log as it is'}")
             # the merge table, in the same rank order?
             tok_cmp = tokenizer_bin.compare(tok, g.meta.get("tokenizer.ggml.tokens") or [],
                                             g.meta.get("tokenizer.ggml.merges") or [],
