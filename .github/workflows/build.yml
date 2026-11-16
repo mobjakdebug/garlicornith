@@ -54,7 +54,7 @@ jobs:
         timeout-minutes: 20
         run: python pc/ci_toolchain.py
 
-      - name: compile (no weights: this only proves the C code builds)
+      - name: compile without weights (this only proves the C code builds)
         run: |
           set -o pipefail
           python build_chat.py 2>&1 | tee compile.txt
