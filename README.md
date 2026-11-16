@@ -94,8 +94,9 @@ so that a failure is quick to place and cheap to repeat:
 It keeps:
 
 * **`garlic-ornith-ps4-pkg`** — the all-in-one package, `IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg`, 4 898 750 464
-  bytes (4.56 GiB), the weights inside, sha256 `bd7ff62a…ae277f4` (the run prints the whole hash in
-  `package-logs`/`summary.txt`). This is the deliverable; download it from the run's page.
+  bytes (4.56 GiB), the weights inside. This is the deliverable; download it from the run's page. Its sha256 is
+  printed in the run's `package-logs`/`summary.txt`; it changes from build to build because `pkg_build` stamps the
+  package with the time, while the weights and the two indexes below do not.
 * `ornith-model` — the converted weights and the two indexes, for an app-only package with the weights in `/data`
 * `compile-logs`, `convert-logs`, `package-logs` — what each job printed
 
@@ -126,13 +127,14 @@ Run [43955316206](https://github.com/mobjakdebug/garlicornith/actions/runs/43955
 `arena/89d02c3e-garlicornith`, commit `403d9a4`, all three jobs green):
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 750 464   bd7ff62a…ae277f4
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 750 464   7e6279a0…52d32368a
 models/ornith-1.5-9b-q4s.bin                          4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                            212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                     11 312   a6487233…4f2f24b15
 chat/assets_9b/mtp.idx                                          588   32a083db…29694eb
 ```
 
+The weights are the same bytes in every build (they are a pure function of the GGUF and the converter);
 and the layout checks of that run, against Hugging Face's `ornith-ai/Ornith-1.5-9B`: every one of the eighteen
 lines `yes`, `=> the layout is the one the converter assumes` (`ci/last-run/20261116T211508Z-convert/inspect.txt`).
 
