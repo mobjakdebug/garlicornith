@@ -29,7 +29,9 @@ for attempt in 1 2 3 4 5; do
   echo "push rejected (attempt $attempt), rebasing on origin/$branch"
   sleep 5
   git fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" || continue
-  git rebase -q "origin/$branch" || { echo "rebase failed"; exit 0; }
+  # --autostash: a job that converted the model has those files modified (they are in the repo too), and a rebase
+  # would otherwise refuse to run with a dirty tree
+  git rebase -q --autostash "origin/$branch" || { git rebase --abort 2>/dev/null; echo "rebase failed"; exit 0; }
 done
 echo "could not publish the logs"
 exit 0

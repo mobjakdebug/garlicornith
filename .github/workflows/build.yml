@@ -119,7 +119,7 @@ jobs:
             models/*.bin
             models/*.json
             chat/assets_9b/*.idx
-          key: ornith-${{ env.QUANT }}-${{ hashFiles('pc/ornith_convert.py', 'pc/gguf.py', 'pc/q4.py', 'pc/q3.py', 'pc/vocab_order.npy', 'pc/tokenizer_bin.py') }}
+          key: ornith2-${{ env.QUANT }}-${{ hashFiles('pc/ornith_convert.py', 'pc/gguf.py', 'pc/q4.py', 'pc/q3.py', 'pc/vocab_order.npy', 'pc/tokenizer_bin.py') }}
 
       - name: the model's GGUF
         if: steps.cache.outputs.cache-hit != 'true'
