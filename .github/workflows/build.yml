@@ -25,6 +25,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write          # the jobs publish their logs to ci/last-run/ in the branch
+
 concurrency:
   group: build-ornith-${{ github.ref }}
   cancel-in-progress: false
