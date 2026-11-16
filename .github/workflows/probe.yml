@@ -28,6 +28,7 @@ jobs:
         run: |
           set -o pipefail
           python pc/ornith_convert.py inspect 2>&1 | tee inspect.txt
+          python pc/ornith_check_layout.py 2>&1 | tee layout.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
