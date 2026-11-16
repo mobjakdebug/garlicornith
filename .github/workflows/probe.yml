@@ -1,0 +1,66 @@
+name: probe
+
+# Cheap checks, on demand: what a GGUF of Ornith-1.5-9B holds, and what the OpenOrbis toolchain release contains.
+# Nothing here is built. Push a change to ci/probe (or run the workflow) to see the reports.
+on:
+  push:
+    paths: ["ci/probe"]
+  workflow_dispatch:
+
+jobs:
+  gguf:
+    name: Ornith-1.5-9B GGUF (metadata, tensors, tokenizer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy
+      - name: self-test of the GGUF reader
+        run: python tests/gguf_test.py
+      - name: inspect the model
+        run: |
+          set -o pipefail
+          python pc/ornith_convert.py inspect 2>&1 | tee inspect.txt
+          {
+            echo '### Ornith-1.5-9B GGUF'
+            echo '```'
+            cat inspect.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gguf-inspect
+          path: inspect.txt
+
+  toolchain:
+    name: OpenOrbis toolchain and Zig
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install
+        continue-on-error: true
+        timeout-minutes: 20
+        run: python pc/ci_toolchain.py 2>&1 | tail -40
+      - name: what is there
+        run: |
+          python pc/ci_toolchain.py --probe 2>&1 | tee probe.txt || true
+          echo "--- toolchain tree (2 levels) ---" | tee -a probe.txt
+          ls -la toolchain toolchain/OpenOrbis toolchain/OpenOrbis/PS4Toolchain 2>&1 | tee -a probe.txt || true
+          echo "--- lib and include ---" | tee -a probe.txt
+          ls toolchain/OpenOrbis/PS4Toolchain/lib toolchain/OpenOrbis/PS4Toolchain/include 2>&1 | head -30 | tee -a probe.txt || true
+          echo "--- zig ---" | tee -a probe.txt
+          ./toolchain/zig/zig version 2>&1 | tee -a probe.txt || true
+          { echo '### toolchain'; echo '```'; cat probe.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: toolchain-probe
+          path: probe.txt

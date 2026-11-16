@@ -1,0 +1,152 @@
+name: build-ornith-ps4
+
+# Garlic LLM, with Ornith-1.5-9B instead of Qwen3.5-9B, built as a PS4 package.
+#
+#   1. install the OpenOrbis PS4 toolchain + Zig                          (pc/ci_toolchain.py)
+#   2. download the model's GGUF and convert it to the PS4's formats      (pc/ornith_convert.py)
+#   3. compile the app and the package                                    (build_chat.py --full)
+#   4. keep the package, the indexes and the logs as artifacts
+#
+# Push a change to ci/build, or run the workflow by hand (it takes what the inputs say).
+on:
+  push:
+    paths: ["ci/build"]
+  workflow_dispatch:
+    inputs:
+      quant:
+        description: "GGUF to convert (BF16 keeps the most quality; a smaller one is a shorter run)"
+        type: choice
+        options: [bf16, q8_0, q6_k, q5_k_m, q4_k_m]
+        default: bf16
+      weights_only:
+        description: "skip compiling the app (only convert the weights)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-ornith-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  QUANT: ${{ inputs.quant || 'bf16' }}
+  ORNITH_GGUF_BF16: Ornith-1.5-9B-BF16.gguf
+
+jobs:
+  build:
+    name: convert + compile + package
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: python deps
+        run: pip install numpy
+
+      - name: self-test of the GGUF reader
+        run: python tests/gguf_test.py
+
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/boost /usr/local/share/powershell /opt/microsoft /usr/lib/R \
+                      /usr/local/lib/node_modules /opt/az /usr/local/aws-cli
+          sudo apt-get clean
+          df -h /
+          echo "free: $(df --output=avail -BG / | tail -1)"
+
+      - name: tools (OpenOrbis + Zig)
+        timeout-minutes: 20
+        run: python pc/ci_toolchain.py
+
+      - name: the model's GGUF
+        run: |
+          set -euo pipefail
+          mkdir -p models
+          case "$QUANT" in
+            bf16)   file=Ornith-1.5-9B-BF16.gguf ;;
+            q8_0)   file=Ornith-1.5-9B-Q8_0.gguf ;;
+            q6_k)   file=Ornith-1.5-9B-Q6_K.gguf ;;
+            q5_k_m) file=Ornith-1.5-9B-Q5_K_M.gguf ;;
+            q4_k_m) file=Ornith-1.5-9B-Q4_K_M.gguf ;;
+            *) echo "unknown quant $QUANT"; exit 1 ;;
+          esac
+          echo "GGUF=$file" >> "$GITHUB_ENV"
+          curl -fL --retry 5 --retry-all-errors -C - \
+            -o "models/$file" \
+            "https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF/resolve/main/$file"
+          ls -l models/
+          df -h /
+
+      - name: inspect the model (before the long part)
+        run: |
+          set -o pipefail
+          python pc/ornith_convert.py inspect --gguf "models/$GGUF" 2>&1 | tee inspect.txt
+
+      - name: convert to the PS4's formats
+        if: ${{ inputs.weights_only != true }}
+        run: |
+          set -o pipefail
+          time python pc/ornith_convert.py convert --gguf "models/$GGUF" 2>&1 | tee convert.txt
+          rm -f "models/$GGUF"          # the source is no longer needed: 18 GiB back
+          ls -l models/ chat/assets_9b/
+          df -h /
+
+      - name: compile the app and the package
+        if: ${{ inputs.weights_only != true }}
+        run: |
+          set -o pipefail
+          time python build_chat.py --full 2>&1 | tee build.txt
+
+      - name: what was built
+        if: always()
+        run: |
+          {
+            echo "### build-ornith-ps4 (${{ github.sha }})"
+            echo ""
+            echo "source GGUF: \`$QUANT\`"
+            echo ""
+            ls -l build/chat/*.pkg models/ chat/assets_9b/ 2>/dev/null || true
+            echo ""
+            for f in build/chat/*.pkg models/*.bin chat/assets_9b/*.idx; do
+              [ -f "$f" ] && echo "$(sha256sum "$f")"
+            done
+            df -h /
+          } | tee summary.txt
+          { echo '```'; cat summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: keep the package
+        if: ${{ inputs.weights_only != true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: garlic-ornith-ps4-pkg
+          path: build/chat/*.pkg
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: keep the model files and the indexes
+        if: ${{ inputs.weights_only != true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: garlic-ornith-ps4-model
+          path: |
+            models/*.bin
+            models/*.json
+            chat/assets_9b/*.idx
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            inspect.txt
+            convert.txt
+            build.txt
+            summary.txt
+          if-no-files-found: ignore
