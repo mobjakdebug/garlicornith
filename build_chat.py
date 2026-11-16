@@ -3,6 +3,7 @@
 Run: python build_chat.py           -> build/chat/IV0000-PSAI00001_00-PS4LOCALAICHAT01.pkg ("Garlic LLM", Qwen3.5-9B)
      python build_chat.py --4b      -> "Garlic LLM 4B" (PSAI00002), a second app that installs next to the first
      --upload                       -> also copies the package to the console (/data/pkg/), see PS4_IP in build.py
+     --no-package                   -> compile and stop (a check that the C builds, no packaging)
      --full                         -> the all-in-one package, with the weights inside: models/<file> goes to
                                        /app0/models, where the app looks first (chat/engine.c weights_locate)
 The package gets chat/assets plus the files of its model: chat/assets_9b or chat/assets_4b.
@@ -27,6 +28,7 @@ else:
     TITLE, VERSION, TITLE_ID, SUFFIX = "Garlic LLM Ornith", "1.21", "PSAI00003", "03"
     REMOTE = "/data/pkg/Garlic-LLM.pkg"
 FULL = "--full" in sys.argv
+NO_PACKAGE = "--no-package" in sys.argv
 # the weights of the all-in-one package (the names the .idx files give, see weights_locate)
 # 4B: Qwen3.5-4B. 9B (this app): Ornith-1.5-9B, converted by pc/ornith_convert.py. The voice and dictation weights
 # (parakeet-v3-q4i.bin, chatterbox-t3.bin, chatterbox-s3gen-mf.bin) are the ones pc/convert_parakeet.py and
@@ -111,6 +113,9 @@ def main():
            "-L", b.OO / "lib", *LIBS, b.OO / "lib" / "crt1.o", "-o", elf])
     b.run([b.BIN / f"create-fself{b.EXE}", f"-in={elf}", f"-out={OUT / 'ps4ai.oelf'}", f"--eboot={PKGDIR / 'eboot.bin'}",
            "--paid", "0x3800000000000011"])
+    if NO_PACKAGE:
+        print("compiled", elf, "- stopped before the package (--no-package)")
+        return
     sample = b.OO / "samples" / "hello_world"
     shutil.copy(sample / "sce_sys" / "about" / "right.sprx", PKGDIR / "sce_sys" / "about")
     shutil.copy(ROOT / "chat" / "sce_sys" / "icon0.png", PKGDIR / "sce_sys")

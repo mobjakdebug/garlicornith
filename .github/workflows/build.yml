@@ -60,7 +60,7 @@ jobs:
       - name: compile without weights (this only proves the C code builds)
         run: |
           set -o pipefail
-          python build_chat.py 2>&1 | tee compile.txt
+          python build_chat.py --no-package 2>&1 | tee compile.txt
           ls -l build/chat/ build/chat/pkg/ | head -30
 
       - name: keep the logs
@@ -260,6 +260,12 @@ jobs:
             [ -f "$f" ] || continue
             tail -c 4000 "$f" | sed 's/\\r//g' | while IFS= read -r line; do echo "::error title=package::$line"; done
           done
+          cd build/chat/pkg || exit 0
+          { echo "--- pkg_build again, now with the loader and the .NET host talking ---"
+            LD_DEBUG=libs COREHOST_TRACE=1 TERM=dumb \
+              "$GITHUB_WORKSPACE/toolchain/OpenOrbis/PS4Toolchain/bin/linux/PkgTool.Core" \
+              pkg_build pkg.gp4 "$GITHUB_WORKSPACE/build/chat" 2>&1 | grep -i "ssl\|crypto\|host\|error\|fail\|abort" | tail -40
+          } >> "$GITHUB_WORKSPACE/package.txt" 2>&1 || true
 
       - name: publish the logs to the branch
         if: always()

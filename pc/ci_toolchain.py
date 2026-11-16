@@ -16,10 +16,13 @@ the tool rather than assuming a layout, and says what it found. Run it again and
 
 import argparse
 import os
+import re
 import shutil
 import stat
+import subprocess
 import sys
 import tarfile
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -28,6 +31,11 @@ ROOT = Path(__file__).resolve().parent.parent
 TOOLCHAIN = Path(os.environ.get("GARLIC_TOOLCHAIN") or ROOT / "toolchain")
 OO = TOOLCHAIN / "OpenOrbis" / "PS4Toolchain"
 ZIG_DIR = TOOLCHAIN / "zig"
+SSL11 = TOOLCHAIN / "libssl1.1"          # for PkgTool.Core, see libssl11()
+SSL11_POOLS = ["http://old-releases.ubuntu.com/ubuntu/pool/main/o/openssl/",
+               "http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/",
+               "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/",
+               "http://deb.debian.org/debian/pool/main/o/openssl/"]
 
 OO_RELEASE = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz"
 OO_SAMPLES = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.3/samples-pkg-llvm-18.zip"
@@ -93,6 +101,37 @@ def probe():
             log(f"      {pat:26s} {[p.name for p in (OO / 'samples' / 'hello_world').glob(pat)]}")
     z = ZIG_DIR / "zig"
     log(f"    zig binary {z} {'yes' if z.exists() else 'no'}")
+
+
+def libssl11():
+    """PkgTool.Core is a self-contained .NET Core 3.0 binary, and its crypto layer dlopens libssl.so.1.1. Every
+    distribution newer than 22.04 ships OpenSSL 3 instead, and then `PkgTool.Core pkg_build` dies with SIGABRT and
+    no message at all (its other commands, which need no crypto, still work). Take the library out of a package
+    and let build.py put it on the loader's path."""
+    lib = SSL11 / "usr" / "lib" / "x86_64-linux-gnu"
+    if os.name == "nt" or (lib / "libssl.so.1.1").exists():
+        return
+    log("libssl 1.1 (PkgTool.Core's crypto library)")
+    for pool in SSL11_POOLS:
+        try:
+            html = urllib.request.urlopen(pool, timeout=60).read().decode("utf-8", "replace")
+        except Exception as ex:  # noqa: BLE001
+            log(f"  {pool}: {ex}")
+            continue
+        names = sorted(set(re.findall(r"libssl1\.1_[^\"'<>]*_amd64\.deb", html)))
+        if not names:
+            log(f"  {pool}: no libssl1.1 package")
+            continue
+        name = names[-1]                                   # the listings are in version order
+        try:
+            deb = download(urllib.parse.urljoin(pool, name), TOOLCHAIN / "downloads" / name)
+            lib.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["dpkg-deb", "-x", str(deb), str(SSL11)], check=True)
+            log(f"  {name} -> {lib}")
+            return
+        except Exception as ex:  # noqa: BLE001
+            log(f"  {name}: {ex}")
+    log("  no libssl 1.1 anywhere: PkgTool.Core will abort at pkg_build")
 
 
 def install():
@@ -167,6 +206,7 @@ def install():
         if err:
             raise SystemExit(f"no Zig: {err}")
     (ZIG_DIR / "zig").chmod((ZIG_DIR / "zig").stat().st_mode | stat.S_IXUSR)
+    libssl11()
     probe()
 
 

@@ -20,6 +20,8 @@ WIN = os.name == "nt"
 EXE = ".exe" if WIN else ""                       # the tools' names on Windows and on Linux
 ZIG = TOOLCHAIN / "zig" / f"zig{EXE}"
 DOTNET = TOOLCHAIN / "dotnet" / "dotnet.exe"      # Windows only: PkgTool.Core.dll runs on it there
+# PkgTool.Core is .NET Core 3.0: its crypto needs libssl.so.1.1, which pc/ci_toolchain.py fetches (see there)
+SSL11 = TOOLCHAIN / "libssl1.1" / "usr" / "lib" / "x86_64-linux-gnu"
 BIN = OO / ("bin/windows" if WIN else "bin/linux")
 BUILD = ROOT / "build"
 PKGDIR = BUILD / "pkg"
@@ -34,6 +36,8 @@ CFLAGS = ["-target", "x86_64-freebsd-none", "-march=btver2", "-O2", "-fPIC", "-f
 
 ENV = dict(os.environ, DOTNET_ROLL_FORWARD="Major", OO_PS4_TOOLCHAIN=str(OO),
            DOTNET_SYSTEM_GLOBALIZATION_INVARIANT="1")   # PkgTool.Core needs no ICU library (Linux)
+if not WIN and (SSL11 / "libssl.so.1.1").exists():
+    ENV["LD_LIBRARY_PATH"] = f"{SSL11}:{ENV.get('LD_LIBRARY_PATH', '')}".rstrip(":")
 
 
 def run(cmd, **kw):
