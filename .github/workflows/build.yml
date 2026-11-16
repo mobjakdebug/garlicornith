@@ -2,15 +2,14 @@ name: build-ornith-ps4
 
 # Garlic LLM, with Ornith-1.5-9B instead of Qwen3.5-9B, built as a PS4 package.
 #
-#   1. install the OpenOrbis PS4 toolchain + Zig                          (pc/ci_toolchain.py)
-#   2. download the model's GGUF and convert it to the PS4's formats      (pc/ornith_convert.py)
-#   3. compile the app and the package                                    (build_chat.py --full)
-#   4. keep the package, the indexes and the logs as artifacts
+#   compile:  install the toolchain and compile the app (no weights needed) -- a fast check of the C code
+#   convert:  download the model's GGUF and convert it to the PS4's formats (kept in the Actions cache after)
+#   package:  build the all-in-one package with the weights inside, and keep it as an artifact
 #
 # Push a change to ci/build, or run the workflow by hand (it takes what the inputs say).
-permissions:
-  contents: write
-
+#
+# Each job leaves its output in ci/last-run/<utc>-<job>/ on the branch: that is how a run can be read from
+# everywhere (the artifact and log endpoints of Actions are not always reachable).
 on:
   push:
     paths: ["ci/build"]
@@ -21,8 +20,8 @@ on:
         type: choice
         options: [bf16, q8_0, q6_k, q5_k_m, q4_k_m]
         default: bf16
-      weights_only:
-        description: "skip compiling the app (only convert the weights)"
+      no_package:
+        description: "compile only: stop before the conversion and the package"
         type: boolean
         default: false
 
@@ -32,24 +31,73 @@ concurrency:
 
 env:
   QUANT: ${{ inputs.quant || 'bf16' }}
-  ORNITH_GGUF_BF16: Ornith-1.5-9B-BF16.gguf
+  DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: 1
 
 jobs:
-  build:
-    name: convert + compile + package
+  compile:
+    name: compile the app
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: python deps
-        run: pip install numpy
+      - run: pip install numpy
 
-      - name: self-test of the GGUF reader
-        run: python tests/gguf_test.py
+      - name: self-tests (the GGUF reader, the layouts)
+        run: |
+          python tests/gguf_test.py
+          python tests/ornith_layout_test.py
+
+      - name: tools (OpenOrbis + Zig)
+        timeout-minutes: 20
+        run: python pc/ci_toolchain.py
+
+      - name: compile (no weights: this only proves the C code builds)
+        run: |
+          set -o pipefail
+          python build_chat.py 2>&1 | tee compile.txt
+          ls -l build/chat/ build/chat/pkg/ | head -30
+
+      - name: keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-logs
+          path: "*.txt"
+          if-no-files-found: ignore
+
+      - name: say why it failed
+        if: failure()
+        run: |
+          for f in compile.txt; do
+            [ -f "$f" ] || continue
+            tail -c 4000 "$f" | sed 's/\\r//g' | while IFS= read -r line; do echo "::error title=compile::$line"; done
+          done
+
+      - name: publish the logs to the branch
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-compile"
+          mkdir -p "$d"
+          for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
+          bash ci/publish.sh "$d" "${{ github.workflow }} ${{ github.run_id }} (compile)"
+
+  convert:
+    name: convert Ornith-1.5-9B
+    needs: compile
+    if: ${{ inputs.no_package != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy
 
       - name: free disk space
         run: |
@@ -59,13 +107,19 @@ jobs:
                       /usr/local/lib/node_modules /opt/az /usr/local/aws-cli
           sudo apt-get clean
           df -h /
-          echo "free: $(df --output=avail -BG / | tail -1)"
 
-      - name: tools (OpenOrbis + Zig)
-        timeout-minutes: 20
-        run: python pc/ci_toolchain.py
+      - name: the converted model, if this exact converter has run before
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.bin
+            models/*.json
+            chat/assets_9b/*.idx
+          key: ornith-${{ env.QUANT }}-${{ hashFiles('pc/ornith_convert.py', 'pc/gguf.py', 'pc/q4.py', 'pc/q3.py', 'pc/vocab_order.npy', 'pc/tokenizer_bin.py') }}
 
       - name: the model's GGUF
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           mkdir -p models
@@ -78,63 +132,34 @@ jobs:
             *) echo "unknown quant $QUANT"; exit 1 ;;
           esac
           echo "GGUF=$file" >> "$GITHUB_ENV"
-          curl -fL --retry 5 --retry-all-errors -C - \
-            -o "models/$file" \
+          curl -fL --retry 5 --retry-all-errors -C - -o "models/$file" \
             "https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF/resolve/main/$file"
           ls -l models/
-          df -h /
 
-      - name: inspect the model (before the long part)
+      - name: inspect the model, and check the layout against Hugging Face
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -o pipefail
           python pc/ornith_convert.py inspect --gguf "models/$GGUF" 2>&1 | tee inspect.txt
 
       - name: convert to the PS4's formats
-        if: ${{ inputs.weights_only != true }}
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -o pipefail
-          time python pc/ornith_convert.py convert --gguf "models/$GGUF" 2>&1 | tee convert.txt
+          python pc/ornith_convert.py convert --gguf "models/$GGUF" 2>&1 | tee convert.txt
           rm -f "models/$GGUF"          # the source is no longer needed: 18 GiB back
           ls -l models/ chat/assets_9b/
           df -h /
 
-      - name: compile the app and the package
-        if: ${{ inputs.weights_only != true }}
+      - name: the model is already converted
+        if: steps.cache.outputs.cache-hit == 'true'
         run: |
-          set -o pipefail
-          time python build_chat.py --full 2>&1 | tee build.txt
+          echo "converted model restored from the cache" | tee inspect.txt
+          ls -l models/ chat/assets_9b/
 
-      - name: what was built
-        if: always()
-        run: |
-          {
-            echo "### build-ornith-ps4 (${{ github.sha }})"
-            echo ""
-            echo "source GGUF: \`$QUANT\`"
-            echo ""
-            ls -l build/chat/*.pkg models/ chat/assets_9b/ 2>/dev/null || true
-            echo ""
-            for f in build/chat/*.pkg models/*.bin chat/assets_9b/*.idx; do
-              [ -f "$f" ] && echo "$(sha256sum "$f")"
-            done
-            df -h /
-          } | tee summary.txt
-          { echo '```'; cat summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: keep the package
-        if: ${{ inputs.weights_only != true }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: garlic-ornith-ps4-pkg
-          path: build/chat/*.pkg
-          compression-level: 0
-          if-no-files-found: error
-
-      - name: keep the model files and the indexes
-        if: ${{ inputs.weights_only != true }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: garlic-ornith-ps4-model
+          name: ornith-model
           path: |
             models/*.bin
             models/*.json
@@ -142,37 +167,103 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
-      - name: keep the logs
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: logs
-          path: |
-            inspect.txt
-            convert.txt
-            build.txt
-            summary.txt
+          name: convert-logs
+          path: "*.txt"
           if-no-files-found: ignore
 
       - name: publish the logs to the branch
-        # Artifacts and logs are behind hosts this sandbox cannot reach, so a run leaves its output in the branch:
-        # ci/last-run/<utc>-<job>/. Events pushed by GITHUB_TOKEN do not start another run.
         if: always()
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
-          set -e
-          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-${{ github.job }}"
+          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-convert"
           mkdir -p "$d"
           for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
-          ls -l "$d"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f "$d"
-          git diff --cached --quiet && exit 0
-          git commit -q -m "ci: logs of ${{ github.workflow }} ${{ github.run_id }} (${{ github.job }})"
-          for i in 1 2 3 4 5; do
-            git fetch -q origin "$BRANCH" || true
-            git rebase -q "origin/$BRANCH" 2>/dev/null || git rebase --abort 2>/dev/null || true
-            git push -q origin "HEAD:$BRANCH" && break || sleep 5
+          bash ci/publish.sh "$d" "${{ github.workflow }} ${{ github.run_id }} (convert)"
+
+  package:
+    name: package
+    needs: [compile, convert]
+    if: ${{ inputs.no_package != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy
+
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/boost /usr/local/share/powershell /opt/microsoft /usr/lib/R \
+                      /usr/local/lib/node_modules /opt/az /usr/local/aws-cli
+          sudo apt-get clean
+          df -h /
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ornith-model
+          path: .
+
+      - name: tools (OpenOrbis + Zig)
+        timeout-minutes: 20
+        run: python pc/ci_toolchain.py
+
+      - name: build the all-in-one package
+        run: |
+          set -o pipefail
+          python build_chat.py --full 2>&1 | tee package.txt
+
+      - name: what was built
+        if: always()
+        run: |
+          {
+            echo "### garlic-ornith-ps4 (${{ github.sha }})"
+            echo ""
+            ls -l build/chat/*.pkg models/*.bin chat/assets_9b/ 2>/dev/null || true
+            echo ""
+            for f in build/chat/*.pkg models/*.bin chat/assets_9b/*.idx; do
+              [ -f "$f" ] && echo "$(sha256sum "$f")"
+            done
+            df -h /
+          } | tee package.log
+
+      - name: keep the package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: garlic-ornith-ps4-pkg
+          path: build/chat/*.pkg
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-logs
+          path: ["*.txt", "*.log"]
+          if-no-files-found: ignore
+
+      - name: say why it failed
+        if: failure()
+        run: |
+          for f in package.txt package.log; do
+            [ -f "$f" ] || continue
+            tail -c 4000 "$f" | sed 's/\\r//g' | while IFS= read -r line; do echo "::error title=package::$line"; done
           done
+
+      - name: publish the logs to the branch
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-package"
+          mkdir -p "$d"
+          for f in *.txt *.log; do [ -e "$f" ] && cp -f "$f" "$d"/; done
+          bash ci/publish.sh "$d" "${{ github.workflow }} ${{ github.run_id }} (package)"
