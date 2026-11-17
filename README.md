@@ -179,12 +179,12 @@ console does not convert GGUFs. Put such a pair in any public repository and it 
 
 ## What the last run produced
 
-Run [44140431417](https://github.com/mobjakdebug/garlicornith/actions/runs/44140431417) (branch
-`arena/89d02c3e-garlicornith`, commit `446e432`, all three jobs green — the first one with the variable context, the
+Run [44144634898](https://github.com/mobjakdebug/garlicornith/actions/runs/44144634898) (branch
+`arena/89d02c3e-garlicornith`, commit `2b37727`, all three jobs green — the first one with the variable context, the
 Station AI name and the on-console downloader):
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   ed025a7f…f9b71c41de
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   99d0325b…9b0d7231df
 models/ornith-1.5-9b-q4s.bin                          4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                            212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                     11 312   a6487233…4f2f24b15
