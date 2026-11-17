@@ -25,7 +25,8 @@ Terminal-Bench 2.1, against 53.2 / 81.7 / 21.3 for Qwen3.5-9B on the same table 
 | `pc/ci_toolchain.py` | fetches the OpenOrbis PS4 toolchain, Zig and the OpenSSL 1.1 the package tool needs |
 | `.github/workflows/build.yml` | compile, convert and package as three jobs on GitHub Actions; publishes the package as a 4.9 GB artifact |
 | `.github/workflows/probe.yml` | cheap checks: what the GGUF holds, what the toolchain release holds |
-| `chat/ui.c` | the whole interface: theme, header, cards, markdown tables and code panels, keyboard, voice sheet, loading and error cards |
+| `chat/ui.c` | the whole interface: theme, header, cards, markdown tables and code panels, keyboard, voice sheet, loading and error cards, the panel |
+| `chat/panel.inc` | the panel itself (OPTIONS): five sections — API, images, model, system, about — and the file each one writes |
 | `pc/ui_preview.c` | the same screens rendered on a PC to a PNG (`chat/ui.c` only), so the look can be checked without the console |
 | `chat/api.c`, `chat/api_proto.c`, `chat/api_run.inc` | the OpenAI-compatible server: chat, completions, responses, models, SSE, the OpenAPI document |
 | `chat/imgen.c`, `chat/img.c`, `chat/png.c` | image models through the API: the backend's answer, a PNG reader (inflate) and a PNG writer, by hand |
@@ -328,13 +329,13 @@ message that says how to write it, so a client is never left guessing.
 
 ## What the last run produced
 
-Run [44155677873](https://github.com/mobjakdebug/garlicornith/actions/runs/44155677873) (branch
-`arena/89d02c3e-garlicornith`, commit `542e464`, all three jobs green — this one with the new interface, the extra API
+Run [44173541362](https://github.com/mobjakdebug/garlicornith/actions/runs/44173541362) (branch
+`arena/89d02c3e-garlicornith`, commit `5cef2b8`, all three jobs green — this one with the panel, the extra API
 endpoints and the image pipeline; the previous full run was
-[44144634898](https://github.com/mobjakdebug/garlicornith/actions/runs/44144634898)):
+[44155677873](https://github.com/mobjakdebug/garlicornith/actions/runs/44155677873)):
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   4eaad00f…96851439
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   94fa1a5c…a553e74bc9
 models/ornith-1.5-9b-q4s.bin                          4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                            212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                     11 312   a6487233…4f2f24b15
@@ -345,9 +346,10 @@ chat/assets_9b/kernels.bin                                    419 052   (rebuilt
 The compile job also runs the three host suites on every run — the API's protocol (72 checks), its jobs on a mock
 engine (165) and the PNG reader (35) — with gcc and the sanitizers, before the PS4 toolchain is even fetched.
 
-The weights are the same bytes in every build (they are a pure function of the GGUF and the converter);
-and the layout checks of that run, against Hugging Face's `ornith-ai/Ornith-1.5-9B`: every one of the eighteen
-lines `yes`, `=> the layout is the one the converter assumes` (`ci/last-run/20261116T211508Z-convert/inspect.txt`).
+The weights are the same bytes in every build — a pure function of the GGUF and the converter, so this run restored
+them from the cache. The run that converted them checked the layout against Hugging Face's
+`ornith-ai/Ornith-1.5-9B`: every one of the eighteen lines `yes`,
+`=> the layout is the one the converter assumes` (`ci/last-run/20261116T211508Z-convert/inspect.txt`).
 
 ## Installing
 
