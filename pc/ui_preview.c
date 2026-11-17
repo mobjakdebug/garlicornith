@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
             pv.status = "L2 / R2 change the value; \xe2\x9c\x95 turns it on and off.";
             pv.tip[0] = "temperature  0 = steady, 1.5 = wild";
             pv.tip[1] = "cap          reasoning tokens one reply may spend";
-            pv.tip[2] = "thinking     saved in /data/garlic_think.txt";
+            pv.tip[2] = "cap is kept in /data/garlic_think.txt";
         } else if (pv.tab == 3) {
             pv.rows[0] = (PanelRow){S_P_LANGUAGE, "English", PANEL_STEP, 0};
             pv.rows[1] = (PanelRow){S_P_DOWNLOAD, "", PANEL_ACTION, 0};
@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
             pv.status = "/data/station_lang.txt";
             pv.tip[0] = "/data/garlic_api_port.txt   the port the API listens on";
             pv.tip[1] = "/data/garlic_api_key.txt    the key, if one is set";
-            pv.tip[2] = "/data/garlic_think.txt      thinking, and its cap";
+            pv.tip[2] = "/data/garlic_think.txt      the reasoning cap";
         } else {
             pv.rows[0] = (PanelRow){S_P_VERSION, "1.22", PANEL_VALUE, 0};
             pv.rows[1] = (PanelRow){S_P_ENGINE, "Ornith-1.5-9B · q4s", PANEL_VALUE, 0};

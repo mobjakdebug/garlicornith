@@ -202,29 +202,62 @@ in brightness instead of drawing boxes around everything (`0x101216`, `0x171A20`
 * **The keyboard, the voice sheet, the loading and error screens** follow: keys as 64-pixel rounded surfaces with the
   selected one in solid mint and ink text, the dictation as a bar of levels, and start-up as a 760-pixel card that says
   what is loading, how far it is, and which three models this build has.
+* **The panel (OPTIONS)** is everything the app can be told, on one screen: five sections down a rail on the left, the
+  rows of the chosen one on the right, and under the rows the exact line that section is about — the `curl` a client
+  would send, the JSON the image backend is written as, the files the values live in.
 
 ![the conversation](docs/ui/chat.png)
 
-Four renders, as the console draws them (`docs/ui/`): [the conversation](docs/ui/chat.png),
+Six renders, as the console draws them (`docs/ui/`): [the conversation](docs/ui/chat.png),
 [a picture from the image endpoint](docs/ui/picture.png), [the keyboard](docs/ui/keyboard.png),
-[the start-up card](docs/ui/loading.png).
+[the start-up card](docs/ui/loading.png), [the empty screen](docs/ui/empty.png) and [the panel](docs/ui/panel.png).
 
 The screens are drawn by `chat/ui.c` only, so they can be rendered on a PC, pixel for pixel, without the console:
 
 ```sh
 gcc -D_WIN32 -O2 -I chat -o build/ui_preview pc/ui_preview.c chat/ui.c chat/png.c chat/img.c -lm
 build/ui_preview shot.png chat chat/assets            # empty, thinking, generating, loading, error, keyboard, voice,
-                                                      # picture, top
+                                                      # picture, top, panel, panel0 … panel4
 ```
 
-(The writer stores the PNG uncompressed — 1920×1080 comes out at 6 MB — so the four above were run through zlib once
+(The writer stores the PNG uncompressed — 1920×1080 comes out at 6 MB — so the six above were run through zlib once
 before being added here.)
+
+## The panel
+
+OPTIONS opens it; Circle comes back to the conversation. Up and Down move down the rows and wrap, R2 changes the
+value under the cursor (a number steps, a switch flips, an action happens), L2 steps it back, Cross opens what the row
+says it opens — a keyboard, a download, clearing the pictures — and L1 and R1 change section. What the panel changes is written
+to disk as it is changed, so it is also the place to look when the app does not behave as it did yesterday.
+
+| Section | What it holds |
+| --- | --- |
+| **API** | the server on or off, the address it answers on (`192.168.1.42:8080`), the port (typed, or stepped), the key (typed in, or cleared), the number of requests served — and, under the rows, the endpoints and the `curl` a client would send |
+| **Images** | the image backend's address, its model and its key, the folder the pictures are kept in, and clearing them |
+| **Model** | the engine, the temperature (0 to 1.5, in tenths), thinking on or off, the reasoning cap (64 to 4096 tokens, in steps of 256, and it is kept), the window in use, the voice mode |
+| **System** | the language of the whole interface — Spanish, English, Portuguese, Russian — which is kept, a model download, and clearing the conversation |
+| **About** | the version, the engine, the kernels' size, the free memory, the requests served |
+
+The values are files, so the panel writes nothing a script cannot write, and nothing a script writes is hidden from it:
+
+| File | What it holds |
+| --- | --- |
+| `/data/garlic_api.txt` | `1` if the API is on when the app starts |
+| `/data/garlic_api_port.txt` | the port the server listens on (8080 until it is changed) |
+| `/data/garlic_api_key.txt` | the key, when there is one; delete the file for none |
+| `/data/station_images.json` | the image backend: `base_url` (or `url` for a whole endpoint), `api_key`, `model` |
+| `/data/garlic_think.txt` | the reasoning cap, one number |
+| `/data/station_lang.txt` | the language: `0` Spanish, `1` English, `2` Portuguese, `3` Russian |
+| `/data/station-ai/images/` | the pictures the image endpoint has brought back, `img-<n>.png` |
+
+![the panel](docs/ui/panel.png)
 
 ## The API
 
 The API is the way this app is mostly used, so it is an OpenAI-compatible server on the console itself: L3 on the chat
 screen turns it on, the header and the log say where it listens (`192.168.1.42:8080`), and every endpoint below is
-exactly what an OpenAI client already sends. L3 again turns it off.
+exactly what an OpenAI client already sends. L3 again turns it off; the panel (OPTIONS → API) is the same switch, and
+where the port and the key are set.
 
 | Endpoint | What it does |
 | --- | --- |
@@ -240,13 +273,13 @@ IP=192.168.1.42        # what the app shows when the API comes on
 
 curl -N http://$IP:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{
   "model": "Ornith-1.5-9B", "stream": true,
-  "messages": [{"role": "user", "content": "Explícame la atención multi-cabeza en dos frases."}]}'
+  "messages": [{"role": "user", "content": "Explain multi-head attention in two sentences."}]}'
 
 curl http://$IP:8080/v1/completions -H 'Content-Type: application/json' \
-  -d '{"prompt": "Un haiku sobre una PS4:", "max_tokens": 64}'
+  -d '{"prompt": "A haiku about a PS4:", "max_tokens": 64}'
 
 curl http://$IP:8080/v1/responses -H 'Content-Type: application/json' \
-  -d '{"instructions": "Responde en una sola frase.", "input": "¿Qué es un transformer?"}'
+  -d '{"instructions": "Answer in one sentence.", "input": "What is a transformer?"}'
 ```
 
 A client that speaks OpenAI needs only the address — `base_url = "http://192.168.1.42:8080/v1"`, any API key value
@@ -284,7 +317,7 @@ Write the backend into `/data/station_images.json` (one object):
 
 ```sh
 curl http://$IP:8080/v1/images/generations -H 'Content-Type: application/json' \
-  -d '{"prompt": "un atardecer sobre las colinas, estilo acuarela", "size": "1024x1024"}'
+  -d '{"prompt": "a sunset over the hills, watercolour", "size": "1024x1024"}'
 ```
 
 What comes back is the backend's JSON (`data[0].b64_json` unless the client asked for `url`), and, when it is a

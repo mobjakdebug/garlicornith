@@ -126,11 +126,12 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         snprintf(v, sizeof(v), "%u", api_requests());
         panel_row(pv, S_P_REQUESTS, v, PANEL_VALUE, 0);
         pv->status = "POST /v1/chat/completions · /v1/completions · /v1/responses · /v1/images/generations";
-        static char curl[160];
+        static char curl[200], curl_d[240];
         snprintf(curl, sizeof(curl), "curl http://%s/v1/chat/completions \\", api_address());
         pv->tip[0] = curl;
         pv->tip[1] = "  -H 'Content-Type: application/json' \\";
-        pv->tip[2] = "  -d '{\"model\": \"" MODEL_NAME "\", \"messages\": []}'";
+        snprintf(curl_d, sizeof(curl_d), "  -d '{\"model\": \"%s\", \"messages\": []}'", MODEL_NAME);
+        pv->tip[2] = curl_d;
     } else if (tab == 1) {
         static PanelImg img;
         panel_img_read(&img);
@@ -156,7 +157,7 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         pv->status = tr(S_P_CHANGE);
         pv->tip[0] = "temperature  0 = steady, 1.5 = wild";
         pv->tip[1] = "cap          reasoning tokens one reply may spend";
-        pv->tip[2] = "thinking     saved in /data/garlic_think.txt";
+        pv->tip[2] = "cap is kept in /data/garlic_think.txt";
     } else if (tab == 3) {
         panel_row(pv, S_P_LANGUAGE, panel_lang_name(ui_lang), PANEL_STEP, 0);
         panel_row(pv, S_P_DOWNLOAD, "", PANEL_ACTION, 0);
@@ -164,7 +165,7 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         pv->status = PANEL_LANG_FILE;
         pv->tip[0] = "/data/garlic_api_port.txt   the port the API listens on";
         pv->tip[1] = "/data/garlic_api_key.txt    the key, if one is set";
-        pv->tip[2] = "/data/garlic_think.txt      thinking, and its cap";
+        pv->tip[2] = "/data/garlic_think.txt      the reasoning cap";
     } else {
         panel_row(pv, S_P_VERSION, "1.22", PANEL_VALUE, 0);
         snprintf(v, sizeof(v), "%s · %d tokens", MODEL_NAME, (int)eng.ctx_limit);
@@ -209,6 +210,14 @@ static void panel_act(int tab, int sel, int dir) {
             else toast(want ? S_API_ON : S_API_OFF);
         } else if (sel == 2 && dir) {
             api_set_port(api_port() + dir);
+        } else if (sel == 2 && dir == 0) {   // typing it is faster than a digit at a time
+            static char buf[16];
+            snprintf(buf, sizeof(buf), "%d", api_port());
+            if (panel_edit(buf, sizeof(buf))) {
+                int p = atoi(buf);
+                if (p >= 1024 && p <= 65535) api_set_port(p);
+                else say("panel: port %d is out of range", p);
+            }
         } else if (sel == 3 && dir == 0) {
             panel_api_key();
         }
