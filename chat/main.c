@@ -1888,12 +1888,11 @@ static void api_toggle(void) {
 static int api_had_chat, api_step_n;
 static double api_step_t;
 
-static void api_chat_begin(int images) {
+static void api_chat_begin(void) {
     api_had_chat = n_msgs > 0;
     msgs_clear();
     Msg* note = msg_new(MSG_NOTE);
-    const char* line_ = tr(images ? S_IMG_WAIT : S_API_BUSY);
-    msg_append(note, line_, strlen(line_));
+    msg_append(note, tr(S_API_BUSY), strlen(tr(S_API_BUSY)));
     api_busy = 1;
     show_chat();
 }

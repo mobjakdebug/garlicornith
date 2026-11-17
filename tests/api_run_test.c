@@ -70,7 +70,7 @@ static void say(const char* fmt, ...) {
     (void)fmt;
 }
 static double now(void) { return 0; }
-static void api_chat_begin(int images) { (void)images; chat_begun++, msgs_cleared++; }   // (the real one clears it)
+static void api_chat_begin(void) { chat_begun++, msgs_cleared++; }   // (the real one clears the conversation)
 static int imgen_calls;
 static char imgen_body[512];
 void imgen_run(int fd, const char* body, size_t len) {   // (the real one posts to the image backend)

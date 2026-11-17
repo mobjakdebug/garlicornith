@@ -169,7 +169,7 @@ static void api_job(ApiJob* job) {
     thinking = think_turn = 0;
     sys_pre = 0;
     view.scroll = 0;
-    api_chat_begin(0);   // (clears the conversation: a note says that a request is being answered)
+    api_chat_begin();   // (clears the conversation: a note says that a request is being answered)
     if (cr.has_seed) seed = cr.seed;
     char id[32];
     snprintf(id, sizeof(id), "%s%u", job->kind == API_JOB_CHAT      ? "chatcmpl-"

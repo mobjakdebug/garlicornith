@@ -178,6 +178,9 @@ static int net_up(void) {
     }
     sceHttpsSetSslCallback(tpl, ssl_skip, NULL);
     sceHttpSetConnectTimeOut(tpl, 20 * 1000000);
+    // (the header declares this with no prototype, as it does some others: the SDK's call takes the template and usec)
+    sceHttpSetRecvTimeOut(tpl, 120 * 1000000);   // a read that waits longer than two minutes is a dead connection
+                                                 // (and an image backend has answered by then, or it has not)
     say("dl: HTTP client ready (net pool %d, ssl %d, http %d, template %d)", net_pool, ssl_ctx, http_ctx, tpl);
     return 0;
 }
