@@ -1,0 +1,16 @@
+In file included from /home/runner/work/garlicornith/garlicornith/chat/engine.c:1860:
+/home/runner/work/garlicornith/garlicornith/chat/engine_spec.inc:426:91: error: no member named 'tq_split' in 'Engine'
+  426 |                               e->tq_tab, pos + r, e->n_heads, e->n_kv, (double)e->eps, e->tq_split),
+      |                                                                                        ~  ^
+/home/runner/work/garlicornith/garlicornith/chat/engine.c:748:86: note: expanded from macro 'args'
+  748 |     (sizeof(char[sizeof(spec) - 1 == NARGS(__VA_ARGS__) ? 1 : -1]) ? args_v(e, spec, __VA_ARGS__) : 0)
+      |                                                                                      ^~~~~~~~~~~
+In file included from /home/runner/work/garlicornith/garlicornith/chat/engine.c:1860:
+/home/runner/work/garlicornith/garlicornith/chat/engine_spec.inc:432:115: error: no member named 'tq_split' in 'Engine'
+  432 |                          args(e, "pppppuuufp", q, kc, vc, e->attn_part, e->tq_tab, p, e->n_heads, e->n_kv, sc, e->tq_split),
+      |                                                                                                                ~  ^
+/home/runner/work/garlicornith/garlicornith/chat/engine.c:748:86: note: expanded from macro 'args'
+  748 |     (sizeof(char[sizeof(spec) - 1 == NARGS(__VA_ARGS__) ? 1 : -1]) ? args_v(e, spec, __VA_ARGS__) : 0)
+      |                                                                                      ^~~~~~~~~~~
+2 errors generated.
+compile failed: /home/runner/work/garlicornith/garlicornith/chat/engine.c
