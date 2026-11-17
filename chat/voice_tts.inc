@@ -129,8 +129,8 @@ static void tts_leave(void) {
     tts_gaps_log();
     tts_reply_summary();
     tts_stop();
-    if (tts_keep() && eng.s3.loaded) {   // the weights stay in kv_hi for next time (ctx_limit is max_seq either way)
-        engine_kv_return(&eng);
+    if (tts_keep() && eng.s3.loaded) {   // the weights stay in the context's blocks for next time: so does 8K,
+        say("voice: S3Gen stays loaded; context %u tokens", eng.ctx_limit);   // until the conversation needs them
         return;
     }
     eng.s3.loaded = 0;

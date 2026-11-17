@@ -222,6 +222,11 @@ jobs:
         timeout-minutes: 20
         run: python pc/ci_toolchain.py
 
+      - name: the GPU kernels, from shaders/ (the package carries them)
+        run: |
+          set -o pipefail
+          python pc/export_kernels_9b.py 2>&1 | tail -20
+
       - name: build the all-in-one package
         run: |
           set -o pipefail

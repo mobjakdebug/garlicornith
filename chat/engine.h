@@ -275,6 +275,9 @@ int s3g_step(Engine* e, float* out, int max);
 // max_seq), so positions past it must not be in use. engine_kv_return gives it back (contents are not kept).
 uint64_t engine_kv_lend(Engine* e, uint64_t* size);
 void engine_kv_return(Engine* e);
+// The conversation needs the blocks the weights have: they go (whichever library loaded them must load them again),
+// and the context is max_seq again. 1 if something was given back.
+int engine_kv_reclaim(Engine* e);
 // 16 kHz mono audio -> UTF-8 text. Returns 0, or -1 with e->error set.
 int asr_transcribe(Engine* e, const float* audio, int n, char* text, int max);
 // With the 9B, Parakeet's weights live in system memory (338 MiB), which leaves ~20 MiB for everything else. asr_release

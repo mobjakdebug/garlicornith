@@ -661,6 +661,16 @@ uint64_t engine_kv_lend(Engine* e, uint64_t* size) {
 
 void engine_kv_return(Engine* e) { e->ctx_limit = e->max_seq; }
 
+// The blocks S3Gen's weights took, back for the conversation (voice mode loads them again next time). The tokens
+// past the lent block were overwritten, so the caller starts the conversation over as it does when it is full.
+int engine_kv_reclaim(Engine* e) {
+    if (!e->s3.loaded) return 0;
+    e->s3.loaded = 0;
+    e->ctx_limit = e->max_seq;
+    say("voice: the context took the blocks back (%u tokens)", e->max_seq);
+    return 1;
+}
+
 void engine_reset(Engine* e) {
     for (uint32_t i = 0; i < e->n_layers; i++)
         if (!(e->full_mask >> i & 1)) {

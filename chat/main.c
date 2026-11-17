@@ -787,6 +787,11 @@ static void start_turn(const char* user_text) {
     }
 
     int room = 1024 + (think ? think_cap + 64 : 0);
+    if (pos + n + room > (int)eng.ctx_limit && eng.lend_ctx < eng.max_seq && engine_kv_reclaim(&eng)) {
+        // the voice model had the context's longer blocks: it gives them back, and the conversation goes on from
+        // where it was (it never reached the lent block)
+        say("voice: S3Gen's weights gave the context its blocks back; %u tokens", eng.max_seq);
+    }
     if (pos + n + room > (int)eng.ctx_limit) {   // a nearly full context starts over (1024 free for the reply)
         pos = 0;
         need_close = 0;
@@ -838,8 +843,8 @@ static void start_turn(const char* user_text) {
 // must have them all. The prompt's ids and the logits after it go to /data/garlic_kvtest_<tokens>.bin, to compare
 // with a reference.
 static void kv_case(int three) {
-    static uint32_t ids[16384];
-    int n = 0, max = 16384;
+    static uint32_t ids[262144];
+    int n = 0, max = (int)(eng.max_seq > 262144 ? 262144 : eng.max_seq);
     ids[n++] = IM_START;
     n = encode_into(ids, n, max, "user\nLee este texto con atención. El número secreto es 7351.\n");
     const char* filler = "La lluvia caía despacio sobre los tejados del pueblo mientras los vecinos conversaban en la plaza "
@@ -854,8 +859,12 @@ static void kv_case(int three) {
         while (n < 14500) n = encode_into(ids, n, max, filler);
         n = encode_into(ids, n, max, "El animal secreto es PELÍCANO. ");
     }
+    if (three == 3) {   // the context's last block: the stride the kernels address the blocks with
+        while (n < max - 1600) n = encode_into(ids, n, max, filler);
+        n = encode_into(ids, n, max, "El animal secreto es PELÍCANO. ");
+    }
     for (int i = 0; i < 3; i++) n = encode_into(ids, n, max, filler);
-    n = encode_into(ids, n, max, three == 2 ? "\n¿Cuál es el número secreto, cuál es la palabra secreta, cuál es el color "
+    n = encode_into(ids, n, max, three >= 2 ? "\n¿Cuál es el número secreto, cuál es la palabra secreta, cuál es el color "
                                               "secreto y cuál es el animal secreto? Responde en una línea."
                                  : three ? "\n¿Cuál es el número secreto, cuál es la palabra secreta y cuál es el color "
                                            "secreto? Responde en una línea."
@@ -969,6 +978,7 @@ static void kv_split_test(void) {
     kv_case(0);
     if (eng.ctx_limit >= 8192) kv_case(1);
     if (eng.ctx_limit >= 16384) kv_case(2);
+    if (eng.ctx_limit >= 32768) kv_case(3);   // (a fact in the last block of a context of several)
 }
 
 

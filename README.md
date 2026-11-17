@@ -1,7 +1,8 @@
-# Garlic LLM · Ornith-1.5-9B
+# Station AI · Ornith-1.5-9B
 
-[Garlic LLM](https://github.com/leonardo-alegria/garlic-llm) runs a 9-billion-parameter language model on a
-PlayStation 4's own GPU, offline. Upstream it runs Qwen3.5-9B; **this repository runs
+**Station AI** is this fork of [Garlic LLM](https://github.com/leonardo-alegria/garlic-llm): the same console app,
+renamed, with a context that follows the console's memory instead of a constant, and a way to download a model on
+the console itself. Garlic LLM runs a 9-billion-parameter language model on a PlayStation 4's own GPU, offline. Upstream it runs Qwen3.5-9B; **this repository runs
 [Ornith-1.5-9B](https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF) instead**, converted from the model's GGUF into
 the formats the console's kernels read, and built as a PS4 package by GitHub Actions.
 
@@ -79,8 +80,12 @@ list and the chat template in `chat/main.c` (which already writes
 python pc/ci_toolchain.py                     # OpenOrbis PS4 toolchain + Zig into toolchain/
 python pc/ornith_convert.py inspect           # optional: the metadata, the tensor map, the checks
 python pc/ornith_convert.py convert           # downloads the BF16 GGUF and writes the four files
+python pc/export_kernels_9b.py                # the GPU kernels from shaders/ into chat/assets_9b/kernels.bin
 python build_chat.py --full                   # build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
 ```
+
+`pc/export_kernels_9b.py` is part of the build after any change in `shaders/`: the C code and the kernels have to
+agree on the argument lists (the app says so itself at start-up if a kernel is missing).
 
 On GitHub Actions: push a change to `ci/build` (or run **build-ornith-ps4** by hand). The workflow is three jobs,
 so that a failure is quick to place and cheap to repeat:
@@ -121,6 +126,52 @@ Two things the Linux runners needed, both in the scripts:
 `python tests/gguf_test.py` and `python tests/ornith_layout_test.py` check the reader and the two weight layouts
 (the q4s/q3s round trip and the value-head order) without the model, and the `compile` job runs them.
 
+## The context
+
+Upstream's TurboQuant cache is one block of 8192 positions: 66 MiB for this model's eight full-attention layers,
+k and v at four bits a value. Here the cache is *as many blocks as the console's memory leaves*, decided at start-up
+after the weights and the scratch are in:
+
+| Context | KV cache | RoPE table | attention scratch |
+| --- | --- | --- | --- |
+| 8 192 | 66 MiB | 8 MiB | 8 MiB |
+| 32 768 | 264 MiB | 34 MiB | 31 MiB |
+| 65 536 | 528 MiB | 67 MiB | 62 MiB |
+| 200 000 | 1.6 GiB | 205 MiB | 129 MiB |
+| 1 000 000 | 8.2 GiB | 1.0 GiB | 129 MiB |
+
+Nothing is capped at compile time any more: a block's address is `base + position / 8192 * stride` in the kernels,
+and the RoPE table and the partial-attention scratch are sized once the context is known. The engine logs what it
+took (`[ps4ai] context 40960 tokens: 5 blocks of 8192, …`). A Pro has about 4.5 GiB of GPU memory after the system's
+own use and the app's ~4.4 GiB of weights, so expect **32K–64K**; 200K needs a console with more free memory than a
+launch model has, and 1M (8.2 GiB) is out of reach — the ceiling the engine will use is 32 blocks, 256K.
+
+`/data/station_ctx.txt` asks for less, as a token count (`65536`, or `64k`): the context is then the smaller of that
+and what fits. Voice mode still lends the blocks past the first 8192 to S3Gen's weights and caps the conversation at
+8K while they are there; when the conversation needs them back, the weights go and the context is whole again.
+
+## Downloading a model on the console
+
+`chat/dl.c` does the "insane" version: the console itself fetches a model from Hugging Face, no PC and no FTP.
+
+* **When it runs.** At start-up, if the app's `model.idx` names weights that are not there (an app-only package, or a
+  `/data` copy that was never made), or if **Triangle** is held at start-up — that way another repository can be
+  downloaded even with a model installed.
+* **What it asks for.** The console's keyboard takes a repository — `user/model` or the full
+  `https://huggingface.co/user/model` — and remembers it in `/data/station_hf.txt`.
+* **What it downloads.** The root of the repository's `model.idx` and `.bin` files (Hugging Face's
+  `api/models/<repo>/tree/main?recursive=1`), through the console's own HTTP client (`libSceHttp` + `libSceSsl`,
+  redirects followed by hand since the files come from the CDN), into `/data/models/<repo>/`. The index is written
+  last, so a half-finished download never looks like a model.
+* **Resume.** Each file goes through `<name>.part`; if the read stops, the next attempt asks for
+  `Range: bytes=<what is there>-` and continues. A 4.6 GB download over a home connection is a long one, and standby
+  or a lost router should not restart it.
+* **Afterwards.** `/data/station_model.txt` names the directory, and the app loads that model on the next start (and
+  immediately, in the same run).
+
+Only the app's own weight format (the `.bin` + `model.idx` this repository's converter makes) can be downloaded: the
+console does not convert GGUFs. Put such a pair in any public repository and it installs itself this way.
+
 ## What the last run produced
 
 Run [43955316206](https://github.com/mobjakdebug/garlicornith/actions/runs/43955316206) (branch
@@ -142,7 +193,7 @@ lines `yes`, `=> the layout is the one the converter assumes` (`ci/last-run/2026
 
 1. Download `IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg` from the run's artifacts.
 2. Copy it to the console and install it (GoldHEN: *Settings → Debug Settings → Game → Package Installer*).
-   It installs as **Garlic LLM Ornith** (title id `PSAI00003`), next to the original Garlic LLM if that one is there.
+   It installs as **Station AI** (title id `PSAI00003`), next to the original Garlic LLM if that one is there.
 3. About 6 GB free, or 12 GB if you copy the package to the console's own disk first. Same controls as upstream
    (✕ type, □ dictate, ○ stop, △ new chat, L1 voice, R1 run the Python, R3/touchpad think mode, L3 API,
    L2/R2 temperature).
