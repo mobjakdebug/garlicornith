@@ -133,6 +133,7 @@ static void api_job(ApiJob* job) {
     static unsigned api_count;
     if (job->kind == API_JOB_IMAGES) {   // the picture is drawn elsewhere (imgen.c): no tokens, no conversation
         imgen_run(job->fd, job->body, job->body_len);
+        view.scroll = 0;   // (the picture it just added is the newest thing on screen)
         return;
     }
     int resp_api = job->kind == API_JOB_RESPONSES;

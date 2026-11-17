@@ -266,8 +266,8 @@ void imgen_run(int fd, const char* body, size_t len) {
         sb_free(&prompt);
         return;
     }
-    JNode* pool2 = malloc(sizeof(JNode) * (API_MAX_NODES * 8));
-    int ok = pool2 ? json_parse(answer, out_n, pool2, API_MAX_NODES * 8) : -1;
+    JNode* pool2 = malloc(sizeof(JNode) * (API_MAX_NODES * 2));   // (a picture's answer is small: one entry, one text)
+    int ok = pool2 ? json_parse(answer, out_n, pool2, API_MAX_NODES * 2) : -1;
     if (ok >= 0) {
         char path[160] = "";
         int saved = imgen_take(pool2, ok, prompt.p, path, sizeof(path));

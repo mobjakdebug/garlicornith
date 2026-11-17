@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 
 #include "png.h"
+#include <math.h>
+
 #include "ui.h"
 
 uint32_t* back;

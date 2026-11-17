@@ -122,7 +122,6 @@ static const char* strings[N_STRINGS][N_LANGS] = {
                       "Нажмите кнопку PS, чтобы выйти."},
     [S_OFFLINE] = {"100 % sin conexión", "100% offline", "100% offline", "100% офлайн"},
     [S_IMG_WAIT] = {"Pidiendo una imagen…", "Asking for a picture…", "Pedindo uma imagem…", "Запрашиваю картинку…"},
-    [S_IMG_SAVED] = {"Guardada en %s", "Saved to %s", "Guardada em %s", "Сохранено в %s"},
     [S_PY_IMAGE] = {"Imagen", "Image", "Imagem", "Картинка"},
     [S_SYSTEM_PROMPT] = {
         "Eres Station AI, un asistente útil que funciona sin internet en la GPU de una PlayStation 4. "
@@ -1593,9 +1592,9 @@ static void draw_header(const ChatView* v) {
 static int ai_head_h(void) { return font_small.line + 30; }   // the role line inside a reply's card
 
 // ---- pictures (imgen.c: what an image backend drew, shown over its prompt) ------------------------------------
-#define MAX_PICS 6
-#define PIC_MAX_W 780
-#define PIC_MAX_H 438
+#define MAX_PICS 3          // (the conversation keeps the last few: each is a picture in memory)
+#define PIC_MAX_W 720
+#define PIC_MAX_H 405
 typedef struct {
     Img im;
     char path[200];

@@ -140,6 +140,43 @@ static void test_writers(void) {
     api_json_models(&s, "Qwen3.5-9B", 0);
     CHECK(strstr(s.p, "\"data\":[{\"id\":\"Qwen3.5-9B\",\"object\":\"model\"") != NULL);
     sb_free(&s);
+
+    // the older and newer endpoints: each body is JSON, and says what the client reads it for
+    JNode pool[256];
+    sb_init(&s);
+    api_json_text_completion(&s, "cmpl-1", "m", 2, "Hola \"x\"", 8, "stop", 3, 2);
+    CHECK(s.p && json_parse(s.p, s.n, pool, 256) >= 0);
+    CHECK(strstr(s.p, "\"object\":\"text_completion\"") != NULL);
+    CHECK(strstr(s.p, "\"text\":\"Hola \\\"x\\\"\"") != NULL);
+    CHECK(strstr(s.p, "\"total_tokens\":5") != NULL);
+    sb_free(&s);
+
+    sb_init(&s);
+    api_json_text_chunk(&s, "cmpl-1", "m", 2, "Hola", 4, NULL);
+    CHECK(s.p && json_parse(s.p, s.n, pool, 256) >= 0);
+    CHECK(strstr(s.p, "\"finish_reason\":null") != NULL);
+    sb_free(&s);
+
+    sb_init(&s);
+    api_json_response(&s, "resp_1", "m", 2, "Hola \u00e9", 7, "completed", 3, 2);
+    CHECK(s.p && json_parse(s.p, s.n, pool, 256) >= 0);
+    CHECK(strstr(s.p, "\"object\":\"response\"") != NULL);
+    CHECK(strstr(s.p, "\"type\":\"output_text\",\"text\":\"Hola \xc3\xa9\"") != NULL);
+    CHECK(strstr(s.p, "\"input_tokens\":3") != NULL && strstr(s.p, "\"output_tokens\":2") != NULL);
+    sb_free(&s);
+
+    sb_init(&s);
+    api_json_response_event(&s, "response.output_text.delta", "resp_1", "Hola", 4);
+    CHECK(s.p && json_parse(s.p, s.n, pool, 256) >= 0);
+    CHECK(strstr(s.p, "\"type\":\"response.output_text.delta\"") != NULL);
+    CHECK(strstr(s.p, "\"delta\":\"Hola\"") != NULL);
+    sb_free(&s);
+
+    sb_init(&s);
+    api_json_response_event(&s, "response.created", "resp_1", "", 0);
+    CHECK(s.p && json_parse(s.p, s.n, pool, 256) >= 0);
+    CHECK(strstr(s.p, "\"text\"") == NULL);   // what it does not carry stays out
+    sb_free(&s);
 }
 
 int main(void) {
