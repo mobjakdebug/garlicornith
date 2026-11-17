@@ -134,21 +134,26 @@ after the weights and the scratch are in:
 
 | Context | KV cache | RoPE table | attention scratch |
 | --- | --- | --- | --- |
-| 8 192 | 66 MiB | 8 MiB | 8 MiB |
-| 32 768 | 264 MiB | 34 MiB | 31 MiB |
-| 65 536 | 528 MiB | 67 MiB | 62 MiB |
-| 200 000 | 1.6 GiB | 205 MiB | 129 MiB |
-| 1 000 000 | 8.2 GiB | 1.0 GiB | 129 MiB |
+| 8 192 | 66 MiB | 2 MiB | 4 MiB |
+| 32 768 | 264 MiB | 8 MiB | 17 MiB |
+| 65 536 | 528 MiB | 16 MiB | 34 MiB |
+| 200 000 | 1.6 GiB | 51 MiB | 105 MiB |
+| 1 000 000 | 8.2 GiB | 256 MiB | 527 MiB |
 
 Nothing is capped at compile time any more: a block's address is `base + position / 8192 * stride` in the kernels,
-and the RoPE table and the partial-attention scratch are sized once the context is known. The engine logs what it
-took (`[ps4ai] context 40960 tokens: 5 blocks of 8192, …`). A Pro has about 4.5 GiB of GPU memory after the system's
+and the RoPE table and the partial-attention scratch are sized once the context is known. The context is taken
+*after* the weights, the scratch, the voice model and the dictation model have their memory (it is what is left),
+so a long context can never starve them. The engine logs what it took
+(`[ps4ai] context 40960 tokens: 5 blocks of 8192, KV cache 330 MiB, …`). A Pro has about 4.5 GiB of GPU memory after the system's
 own use and the app's ~4.4 GiB of weights, so expect **32K–64K**; 200K needs a console with more free memory than a
 launch model has, and 1M (8.2 GiB) is out of reach — the ceiling the engine will use is 32 blocks, 256K.
 
 `/data/station_ctx.txt` asks for less, as a token count (`65536`, or `64k`): the context is then the smaller of that
 and what fits. Voice mode still lends the blocks past the first 8192 to S3Gen's weights and caps the conversation at
-8K while they are there; when the conversation needs them back, the weights go and the context is whole again.
+8K while they are there; when the conversation needs them back, the weights go and the context is whole again (the
+chat goes on from where it was: it never reached the lent block). With fewer than four blocks — under 32K, a console
+with very little free memory — the lendable run is smaller than the voice model and the MTP head need, so voice and
+speculative decoding report themselves unavailable instead of taking the context's blocks.
 
 ## Downloading a model on the console
 
@@ -174,15 +179,17 @@ console does not convert GGUFs. Put such a pair in any public repository and it 
 
 ## What the last run produced
 
-Run [43955316206](https://github.com/mobjakdebug/garlicornith/actions/runs/43955316206) (branch
-`arena/89d02c3e-garlicornith`, commit `403d9a4`, all three jobs green):
+Run [44140431417](https://github.com/mobjakdebug/garlicornith/actions/runs/44140431417) (branch
+`arena/89d02c3e-garlicornith`, commit `446e432`, all three jobs green — the first one with the variable context, the
+Station AI name and the on-console downloader):
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 750 464   7e6279a0…52d32368a
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   ed025a7f…f9b71c41de
 models/ornith-1.5-9b-q4s.bin                          4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                            212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                     11 312   a6487233…4f2f24b15
 chat/assets_9b/mtp.idx                                          588   32a083db…29694eb
+chat/assets_9b/kernels.bin                                    419 052   (rebuilt from shaders/ in the job)
 ```
 
 The weights are the same bytes in every build (they are a pure function of the GGUF and the converter);
