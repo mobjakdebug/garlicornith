@@ -87,7 +87,7 @@ python build_chat.py --full                   # build/chat/IV0000-PSAI00003_00-P
 `pc/export_kernels_9b.py` is part of the build after any change in `shaders/`: the C code and the kernels have to
 agree on the argument lists (the app says so itself at start-up if a kernel is missing).
 
-On GitHub Actions: push a change to `ci/build` (or run **build-ornith-ps4** by hand). The workflow is three jobs,
+On GitHub Actions: push a change to `ci/build` (or run **build-station-ai-ps4** by hand). The workflow is three jobs,
 so that a failure is quick to place and cheap to repeat:
 
 | Job | What it does | Needs the model? |
@@ -98,7 +98,7 @@ so that a failure is quick to place and cheap to repeat:
 
 It keeps:
 
-* **`garlic-ornith-ps4-pkg`** — the all-in-one package, `IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg`, 4 898 750 464
+* **`station-ai-ps4-pkg`** — the all-in-one package, `IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg`, 4 898 750 464
   bytes (4.56 GiB), the weights inside. This is the deliverable; download it from the run's page. Its sha256 is
   printed in the run's `package-logs`/`summary.txt`; it changes from build to build because `pkg_build` stamps the
   package with the time, while the weights and the two indexes below do not.

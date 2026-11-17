@@ -1,4 +1,4 @@
-name: build-ornith-ps4
+name: build-station-ai-ps4
 
 # Garlic LLM, with Ornith-1.5-9B instead of Qwen3.5-9B, built as a PS4 package.
 #
@@ -236,7 +236,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "### garlic-ornith-ps4 (${{ github.sha }})"
+            echo "### station-ai (${{ github.sha }})"
             echo ""
             ls -l build/chat/*.pkg models/*.bin chat/assets_9b/ 2>/dev/null || true
             echo ""
@@ -250,7 +250,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: garlic-ornith-ps4-pkg
+          name: station-ai-ps4-pkg
           path: build/chat/*.pkg
           compression-level: 0
           if-no-files-found: error
