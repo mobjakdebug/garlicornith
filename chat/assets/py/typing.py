@@ -1,4 +1,4 @@
-# typing for Garlic: the names exist and can be subscripted (List[int]); nothing is checked, as in CPython.
+# typing for Station AI: the names exist and can be subscripted (List[int]); nothing is checked, as in CPython.
 class _Any:
     def __getitem__(self, k):
         return self

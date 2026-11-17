@@ -1,4 +1,4 @@
-// Garlic LLM: chat with Ornith-1.5-9B (Qwen3.5 architecture) running on the PS4's own GPU, on the TV, with the controller; speech to text with
+// Station AI: chat with Ornith-1.5-9B (Qwen3.5 architecture) running on the PS4's own GPU, on the TV, with the controller; speech to text with
 // Parakeet. This file is the console side (screen, controller, microphone, the conversation with the engine);
 // everything that draws is in ui.c.
 //
@@ -1342,7 +1342,7 @@ static int ask_user(char* out, int max) {
     s.posy = SCREEN_H / 2;
     s.horizontalAlignment = ORBIS_H_CENTER;
     s.verticalAlignment = ORBIS_V_CENTER;
-    s.title = L"Garlic LLM";
+    s.title = L"Station AI";
     s.placeholder = placeholder;
     int r = sceImeDialogInit(&s, NULL);
     if (r < 0) {
@@ -1464,7 +1464,7 @@ static void run_python_once(void) {
         say("python ended: %d %s", py_result, py_result == PY_ERROR ? py_error() : "");
         ui_backdrop_save();
         uint32_t prev = read_buttons();
-        for (;;) {   // the end card: back, again, or ask Garlic to fix the error
+        for (;;) {   // the end card: back, again, or ask Station AI to fix the error
             uint32_t b = read_buttons(), pressed = b & ~prev;
             prev = b;
             if (pressed & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE)) return;
@@ -1531,7 +1531,7 @@ static void run_python(void) {
     asr_reload_bg();   // (it first gives back the screen copies the run may have taken)
 }
 
-// ---- voice mode: hold Square, talk, Garlic answers; only its words are on screen -----------------------------------
+// ---- voice mode: hold Square, talk, Station AI answers; only its words are on screen -----------------------------------
 
 #include "voice_tts.inc"
 
@@ -1540,7 +1540,7 @@ static void run_python(void) {
 // dictation takes 0.5-3 s. Drawn from the same loop, the halo and the thinking dots would move only a few times a
 // second and stand still while a prompt is read. In voice mode this thread draws every frame instead (60 Hz), from a
 // copy of what the main thread publishes after each unit of work; it touches nothing else of the conversation, and
-// the main thread draws nothing while it runs. Garlic's loudness, the words already spoken and the time are read
+// the main thread draws nothing while it runs. Station AI's loudness, the words already spoken and the time are read
 // live, frame by frame.
 static struct {
     OrbisPthreadMutex mu;
@@ -1549,7 +1549,7 @@ static struct {
     unsigned ver;              // bumped by every publish
     int listen;                // the user is talking (VM_LISTEN, with listen_level)
     float listen_level;
-    int busy;                  // Garlic is thinking: the model or the voice has work, or a prompt or dictation is read
+    int busy;                  // Station AI is thinking: the model or the voice has work, or a prompt or dictation is read
     int gen;                   // the model is writing (without the voice: VM_SPEAK while its words come)
     int speak;                 // the voice is on
     int voice_msg, voice_busy; // the reply on screen is the one being spoken / the voice still has work for it
@@ -1616,7 +1616,7 @@ static void* vs_main(void* arg) {
             state = gen ? (len ? VM_SPEAK : VM_THINK) : busy ? VM_THINK : VM_IDLE;
             if (state == VM_SPEAK) level = 0.35f + 0.25f * sinf((float)t * 9);
         }
-        // Garlic's words: while it speaks, only what has been said
+        // Station AI's words: while it speaks, only what has been said
         int n = vmsg && (vbusy || playing) ? spoken_bytes(text, len, sp, nsp, aout_played()) : len;
         char keep = text[n];
         text[n] = 0;
@@ -1706,7 +1706,7 @@ static void voice_mode(void) {
             pos = 0, need_close = 0, view.scroll = 0;
             tts.msg = -1;
         }
-        if (pressed & (ORBIS_PAD_BUTTON_SQUARE | ORBIS_PAD_BUTTON_L2)) {   // talking (□ or L2 held) interrupts Garlic
+        if (pressed & (ORBIS_PAD_BUTTON_SQUARE | ORBIS_PAD_BUTTON_L2)) {   // talking (□ or L2 held) interrupts Station AI
             tts_stop();
             if (generating) finish_turn(0);
             static char text[2048];
@@ -1767,7 +1767,7 @@ static void push_to_talk(void) {
     }
 }
 
-// The console this runs on, first thing in the log: firmware, PS4 Pro or not, memory. Garlic is only tested on one
+// The console this runs on, first thing in the log: firmware, PS4 Pro or not, memory. Station AI is only tested on one
 // console (FW 11.52); with this line a log from any other one says what it was.
 static void boot_report(void) {
     OrbisKernelSwVersion v;

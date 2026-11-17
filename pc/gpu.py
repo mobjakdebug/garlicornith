@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ZIG = Path(os.environ.get("GARLIC_TOOLCHAIN") or ROOT / "toolchain") / "zig" / "zig.exe"
+ZIG = Path(os.environ.get("GARLIC_TOOLCHAIN") or ROOT / "toolchain") / "zig" / ("zig.exe" if os.name == "nt" else "zig")
 SHADERS = ROOT / "shaders"
 
 # compute registers, as offsets from the SH register base (0x2C00)

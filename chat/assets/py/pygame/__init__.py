@@ -1,4 +1,4 @@
-# pygame for Garlic LLM on the PS4: display, Surface, Rect, draw, font, event, key, time, mouse (and silent mixer),
+# pygame for Station AI on the PS4: display, Surface, Rect, draw, font, event, key, time, mouse (and silent mixer),
 # drawn through _garlic and played with the controller. The D-pad and the buttons send the keys the program
 # checks for (read from its source); the footer shows which button is which.
 import _garlic

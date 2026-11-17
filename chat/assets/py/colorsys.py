@@ -1,4 +1,4 @@
-# colorsys for Garlic (as CPython's: values from 0 to 1).
+# colorsys for Station AI (as CPython's: values from 0 to 1).
 def rgb_to_hsv(r, g, b):
     mx, mn = max(r, g, b), min(r, g, b)
     if mx == mn:

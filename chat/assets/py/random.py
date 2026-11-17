@@ -1,4 +1,4 @@
-# random for Garlic: MicroPython's built-in random plus what programs use from CPython's (shuffle, sample, choices,
+# random for Station AI: MicroPython's built-in random plus what programs use from CPython's (shuffle, sample, choices,
 # gauss...). The built-in is reached with an empty sys.path.
 import sys
 

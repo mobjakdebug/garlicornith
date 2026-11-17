@@ -175,17 +175,17 @@ typedef struct {
     // Qwen3.5: each full layer's cache is two halves (ATTN_SPLIT in shaders/attn.h); the second halves of all the
     // layers form one block [kv_hi, kv_hi + kv_split) that may be lent out while the context stays under max_seq / 2
     uint64_t kv_hi, kv_split;
-    uint32_t ctx_limit;           // positions the conversation may use: max_seq, or max_seq / 2 while kv_hi is lent
+    uint32_t ctx_limit;           // positions the conversation may use: max_seq, or lend_ctx while kv_hi is lent
     uint32_t lend_ctx;            // ctx_limit while kv_hi is lent (max_seq with the TurboQuant cache)
-    // TurboQuant 4-bit KV cache (shaders/attn_tq.h). The whole context fits in a third of the memory, so kv_hi is a
-    // block of its own: lending it does not shorten an 8K context.
+    // TurboQuant 4-bit KV cache (shaders/attn_tq.h): the context is tq_blocks blocks of 8192 positions, 66 MiB a
+    // block for this model's eight full-attention layers. context_alloc takes as many as the console's memory leaves
+    // after the weights, so the context is as long as the hardware allows instead of a constant.
     int tq;
     uint64_t tq_tab;              // 40 words for the kernels: levels, boundaries, sign bits (pc/turboquant.py)
     const GpuKernel *k_qk_tq, *k_attn_tq, *k_comb_tq;
-    // With TurboQuant the context is 16K: positions 0..8191 in the cache block, 8192..16383 at tq_split bytes
-    // further, inside kv_hi (so while kv_hi is lent the context is 8K, lend_ctx)
-    uint64_t tq_split;
-    int tq16;                     // kernels.bin's TurboQuant kernels take tq_split (16K of context)
+    uint32_t tq_blocks;           // blocks of 8192 positions in the cache
+    uint64_t tq_stride;           // distance between the blocks of a layer (0: one block, everything together)
+    int tq2;                      // kernels.bin addresses the blocks by their stride (kernel tq_stride_v2)
     // The prompt in batches of up to PF_ROWS tokens (shaders/prefill.h): row buffers for the residual (pf_x),
     // its norm (pf_xn), the projections (pf_a: DeltaNet input, q|k|v|gate or gate|up) and their products (pf_h:
     // attention or delta-rule output, SiLU(gate) * up)

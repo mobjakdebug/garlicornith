@@ -15,16 +15,17 @@
 //      positions consecutive (as the fp16 cache, lane = position); then the scales [n_kv][TQ_SEQ] float
 //   v  [TQ_SEQ][n_kv][128] bytes: byte b = dims 2b (low nibble) and 2b + 1; then the scales [TQ_SEQ][n_kv] float
 // 8.25 MiB per layer and block of 8192 positions with 4 kv heads (fp16 k + int8 v: 24.1 MiB).
-// Positions TQ_SEQ .. 2 TQ_SEQ - 1 (16K of context) are in a second block with the same layout, `split` bytes
-// after the first (the engine keeps them in its lendable block, kv_hi).
+// The cache of a layer is `blocks` of these, `stride` bytes apart: block b starts at base + b * stride, so positions
+// p live at base + (p / TQ_SEQ) * stride. The engine allocates as many blocks as the console's memory leaves (the
+// context is blocks * TQ_SEQ positions), and blocks 1.. of all the layers are one contiguous run, which is what voice
+// mode lends to S3Gen. `stride` 0, or one block, keeps everything in the first block, as an 8K cache always did.
 
 #define TQ_D 256
 #define TQ_WORDS (TQ_D / 8)
-#define TQ_SEQ MAX_SEQ                           // positions per block
-#define TQ_MAX_BLOCKS (2 * TQ_SEQ / ATT_BLOCK)   // attention blocks of up to 16K positions (layout of `part`)
+#define TQ_SEQ MAX_SEQ                           // positions per block (the engine's granularity: 8192)
 #define TQ_KSC(kc, n_kv) ((global float*)((global uint*)(kc) + (ulong)(n_kv) * TQ_WORDS * TQ_SEQ))
 #define TQ_VSC(vc, n_kv) ((global float*)((global uchar*)(vc) + (ulong)TQ_SEQ * (n_kv) * (TQ_D / 2)))
-#define TQ_AT(c, p) ((p) >= TQ_SEQ ? (global void*)((global uchar*)(c) + split) : (global void*)(c))
+#define TQ_AT(c, p) ((global void*)((global uchar*)(c) + (ulong)((p) / TQ_SEQ) * stride))
 
 // x[m] = element j + 64 m of a 256-vector held by 64 threads (one wave). Multiplies it by the signs, then applies
 // the unnormalised Walsh-Hadamard transform (natural order): strides 64 and 128 inside each thread, 1 .. 32
@@ -57,7 +58,7 @@ static uint tq_code(float t, global const float* restrict bnd) {
 kernel __attribute__((reqd_work_group_size(64, 1, 1)))
 void qk_rope_cache_tq(global float* qkv, global const float* q_norm, global const float* k_norm,
                       global const float* rope, global uint* kcache, global uchar* vcache,
-                      global const float* restrict tq, uint pos, uint n_heads, uint n_kv, float eps, ulong split) {
+                      global const float* restrict tq, uint pos, uint n_heads, uint n_kv, float eps, ulong stride) {
     local float red[64];
     local float hv[TQ_D];
     local uint cd[TQ_D];
@@ -138,7 +139,8 @@ void qk_rope_cache_tq(global float* qkv, global const float* q_norm, global cons
 //   v        wave w: positions w, w + 4, ...; lane = dimensions 4 lane .. 4 lane + 3 (one 16-bit load)
 kernel __attribute__((reqd_work_group_size(256, 1, 1)))
 void attn_part_tq(global const float* q, global const uint* kcache, global const uchar* vcache, global float* part,
-                  global const float* restrict tq, uint pos, uint n_heads, uint n_kv, float scale, ulong split) {
+                  global const float* restrict tq, uint pos, uint n_heads, uint n_kv, float scale, ulong stride,
+                  uint pstride) {
     local float qd[GQ_MAX][TQ_D];
     local float ps[4][GQ_MAX][ATT_BLOCK];
     local float w[GQ_MAX][ATT_BLOCK];
@@ -219,31 +221,31 @@ void attn_part_tq(global const float* q, global const uint* kcache, global const
     BARRIER();
     for (uint i = t; i < gq * TQ_D; i += 256) {
         uint h = i / TQ_D, d = i % TQ_D, qh = kv * gq + h;
-        part[((ulong)qh * TQ_MAX_BLOCKS + blk) * TQ_D + d] = acc[0][h][d] + acc[1][h][d] + acc[2][h][d] + acc[3][h][d];
+        part[((ulong)qh * pstride + blk) * TQ_D + d] = acc[0][h][d] + acc[1][h][d] + acc[2][h][d] + acc[3][h][d];
     }
     if (lane == 0 && wv < gq) {
         uint qh = kv * gq + wv;
-        global float* pm = part + (ulong)n_heads * TQ_MAX_BLOCKS * TQ_D;
-        pm[qh * TQ_MAX_BLOCKS + blk] = m;
-        pm[(n_heads + qh) * TQ_MAX_BLOCKS + blk] = sum;
+        global float* pm = part + (ulong)n_heads * pstride * TQ_D;
+        pm[qh * pstride + blk] = m;
+        pm[(n_heads + qh) * pstride + blk] = sum;
     }
 }
 
 // One group of 256 threads per q head: merge the blocks (as attn_combine), then rotate back: o = s * (H o') / 16.
 kernel __attribute__((reqd_work_group_size(TQ_D, 1, 1)))
 void attn_combine_tq(global const float* part, global float* out, global const float* restrict tq, uint n_heads,
-                     uint n_blocks) {
+                     uint n_blocks, uint pstride) {
     local float hv[TQ_D];
     global const uint* restrict sign = (global const uint*)tq + 32;
     uint h = GID, t = LID;
-    global const float* pm = part + (ulong)n_heads * TQ_MAX_BLOCKS * TQ_D + h * TQ_MAX_BLOCKS;
-    global const float* psum = pm + n_heads * TQ_MAX_BLOCKS;
+    global const float* pm = part + (ulong)n_heads * pstride * TQ_D + h * pstride;
+    global const float* psum = pm + n_heads * pstride;
     float m = -3.0e38f;
     for (uint b = 0; b < n_blocks; b++) m = __builtin_fmaxf(m, pm[b]);
     float o = 0.0f, sum = 0.0f;
     for (uint b = 0; b < n_blocks; b++) {
         float wb = exp_(pm[b] - m);
-        o += wb * part[((ulong)h * TQ_MAX_BLOCKS + b) * TQ_D + t];
+        o += wb * part[((ulong)h * pstride + b) * TQ_D + t];
         sum += wb * psum[b];
     }
     hv[t] = o / sum;

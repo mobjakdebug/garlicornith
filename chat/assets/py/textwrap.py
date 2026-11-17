@@ -1,4 +1,4 @@
-# textwrap for Garlic: wrap, fill, dedent, indent, shorten.
+# textwrap for Station AI: wrap, fill, dedent, indent, shorten.
 def wrap(text, width=70, **kw):
     lines, line = [], ""
     for word in str(text).split():

@@ -1,4 +1,4 @@
-# Shared helpers of Garlic's turtle / tkinter / pygame: colours and which key each controller button sends.
+# Shared helpers of Station AI's turtle / tkinter / pygame: colours and which key each controller button sends.
 import _garlic
 
 COLORS = {

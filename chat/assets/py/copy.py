@@ -1,4 +1,4 @@
-# copy for Garlic: copy and deepcopy of lists, dicts, sets, tuples and plain objects.
+# copy for Station AI: copy and deepcopy of lists, dicts, sets, tuples and plain objects.
 class Error(Exception):
     pass
 

@@ -39,7 +39,7 @@ _Static_assert(sizeof(ApiSockaddrIn) == sizeof(OrbisNetSockaddr), "sockaddr size
 static OrbisPthreadMutex api_mu;
 static ApiJob* queued;          // waiting for the main loop
 static int busy;                // a chat job is queued or running (api_done clears it)
-static char model_name[64] = "Garlic";
+static char model_name[64] = "Station AI";
 static char* key;               // the API key, or NULL
 static OrbisPthread api_th;
 static int ready, have_thread;  // the network library, the mutex and the key are set up (once); the thread exists

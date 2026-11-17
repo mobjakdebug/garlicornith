@@ -1,4 +1,4 @@
-# functools for Garlic.
+# functools for Station AI.
 def reduce(function, iterable, *initial):
     it = iter(iterable)
     value = initial[0] if initial else next(it)

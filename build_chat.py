@@ -1,7 +1,7 @@
-"""Build Garlic LLM (chat/*.c + MicroPython + chat/assets) as a fake PKG with the OpenOrbis toolchain (see build.py).
+"""Build Station AI (chat/*.c + MicroPython + chat/assets) as a fake PKG with the OpenOrbis toolchain (build.py).
 
-Run: python build_chat.py           -> build/chat/IV0000-PSAI00001_00-PS4LOCALAICHAT01.pkg ("Garlic LLM", Qwen3.5-9B)
-     python build_chat.py --4b      -> "Garlic LLM 4B" (PSAI00002), a second app that installs next to the first
+Run: python build_chat.py           -> build/chat/IV0000-PSAI00001_00-PS4LOCALAICHAT01.pkg ("Station AI", Qwen3.5-9B)
+     python build_chat.py --4b      -> "Station AI 4B" (PSAI00002), a second app that installs next to the first
      --upload                       -> also copies the package to the console (/data/pkg/), see PS4_IP in build.py
      --no-package                   -> compile and stop (a check that the C builds, no packaging)
      --full                         -> the all-in-one package, with the weights inside: models/<file> goes to
@@ -22,11 +22,11 @@ ROOT = b.ROOT
 OUT = ROOT / "build" / "chat"
 PKGDIR = OUT / "pkg"
 if "--4b" in sys.argv:
-    TITLE, VERSION, TITLE_ID, SUFFIX = "Garlic LLM 4B", "1.17", "PSAI00002", "02"
-    REMOTE = "/data/pkg/Garlic-LLM-4B.pkg"
+    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI 4B", "1.17", "PSAI00002", "02"
+    REMOTE = "/data/pkg/Station-AI-4B.pkg"
 else:
-    TITLE, VERSION, TITLE_ID, SUFFIX = "Garlic LLM Ornith", "1.21", "PSAI00003", "03"
-    REMOTE = "/data/pkg/Garlic-LLM.pkg"
+    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.22", "PSAI00003", "03"
+    REMOTE = "/data/pkg/Station-AI.pkg"
 FULL = "--full" in sys.argv
 NO_PACKAGE = "--no-package" in sys.argv
 # the weights of the all-in-one package (the names the .idx files give, see weights_locate)

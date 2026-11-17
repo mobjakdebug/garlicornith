@@ -1,4 +1,4 @@
-# os for Garlic: what text programs call (clearing the screen, the terminal size); there are no files.
+# os for Station AI: what text programs call (clearing the screen, the terminal size); there are no files.
 import _garlic
 
 name = "posix"

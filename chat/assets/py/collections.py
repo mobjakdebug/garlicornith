@@ -1,4 +1,4 @@
-# collections for Garlic: MicroPython's built-in one (deque, namedtuple, OrderedDict) plus Counter and defaultdict.
+# collections for Station AI: MicroPython's built-in one (deque, namedtuple, OrderedDict) plus Counter and defaultdict.
 import sys
 
 _p = list(sys.path)

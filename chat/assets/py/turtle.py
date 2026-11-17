@@ -1,4 +1,4 @@
-# turtle for Garlic LLM on the PS4: the parts of Python's turtle that programs use (Screen, Turtle, keys, timers,
+# turtle for Station AI LLM on the PS4: the parts of Python's turtle that programs use (Screen, Turtle, keys, timers,
 # drawing, write), drawn through _garlic and played with the controller. Coordinates as in turtle: origin in the
 # middle, y up.
 import _garlic

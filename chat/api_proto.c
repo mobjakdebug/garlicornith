@@ -408,7 +408,7 @@ void api_json_models(Sb* out, const char* model, long long created) {
     sb_json_str(out, model, strlen(model));
     sb_str(out, ",\"object\":\"model\",\"created\":");
     sb_int(out, created);
-    sb_str(out, ",\"owned_by\":\"garlic-llm\"}]}");
+    sb_str(out, ",\"owned_by\":\"station-ai\"}]}");
 }
 
 void api_json_completion(Sb* out, const char* id, const char* model, long long created, const char* text, size_t tlen,

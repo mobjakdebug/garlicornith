@@ -1,4 +1,4 @@
-# string for Garlic (CPython's constants and capwords).
+# string for Station AI (CPython's constants and capwords).
 ascii_lowercase = "abcdefghijklmnopqrstuvwxyz"
 ascii_uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 ascii_letters = ascii_lowercase + ascii_uppercase

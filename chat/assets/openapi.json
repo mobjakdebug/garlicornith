@@ -1,10 +1,10 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Garlic LLM API",
+    "title": "Station AI API",
     "version": "1.20",
-    "summary": "OpenAI-compatible chat API for Garlic LLM, running on a PlayStation 4.",
-    "description": "Garlic LLM runs Ornith-1.5-9B (Qwen3.5 architecture) on the PS4's own GPU. This API speaks the OpenAI Chat Completions protocol, so existing OpenAI client libraries work by changing the base URL to http://<console-address>:8080/v1.\n\nThe API is off until it is turned on with L3 on the console's chat screen, which then shows the address.\n\nOne request runs at a time; a request sent meanwhile waits for it. While the model answers, the console's screen says so and the conversation that was on it is cleared. Circle on the controller stops the reply: the client gets what was written so far, with finish_reason \"length\".\n\nReasoning is always off. Parameters the console does not implement (for example tools, logprobs, presence_penalty) are ignored. Only n = 1 is supported.",
+    "summary": "OpenAI-compatible chat API for Station AI, running on a PlayStation 4.",
+    "description": "Station AI runs Ornith-1.5-9B (Qwen3.5 architecture) on the PS4's own GPU. This API speaks the OpenAI Chat Completions protocol, so existing OpenAI client libraries work by changing the base URL to http://<console-address>:8080/v1.\n\nThe API is off until it is turned on with L3 on the console's chat screen, which then shows the address.\n\nOne request runs at a time; a request sent meanwhile waits for it. While the model answers, the console's screen says so and the conversation that was on it is cleared. Circle on the controller stops the reply: the client gets what was written so far, with finish_reason \"length\".\n\nReasoning is always off. Parameters the console does not implement (for example tools, logprobs, presence_penalty) are ignored. Only n = 1 is supported.",
     "license": { "name": "MIT", "identifier": "MIT" }
   },
   "servers": [
@@ -236,7 +236,7 @@
           "id": { "type": "string", "example": "Ornith-1.5-9B" },
           "object": { "type": "string", "const": "model" },
           "created": { "type": "integer" },
-          "owned_by": { "type": "string", "const": "garlic-llm" }
+          "owned_by": { "type": "string", "const": "station-ai" }
         }
       },
       "Error": {

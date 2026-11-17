@@ -1,4 +1,4 @@
-// Garlic LLM user interface (see ui.h). Software rendering into `back` (1920 x 1080, 0x80RRGGBB): a dark,
+// Station AI user interface (see ui.h). Software rendering into `back` (1920 x 1080, 0x80RRGGBB): a dark,
 // blue theme; anti-aliased shapes from signed distances; bitmap fonts from pc/export_chat.py; a small markdown
 // renderer (headings, lists, bold, italics, code, quotes, tables); the chat, the keyboard and the voice screens.
 #include "ui.h"
@@ -104,13 +104,13 @@ static const char* strings[N_STRINGS][N_LANGS] = {
                       "Нажмите кнопку PS, чтобы выйти."},
     [S_OFFLINE] = {"100 % sin conexión", "100% offline", "100% offline", "100% офлайн"},
     [S_SYSTEM_PROMPT] = {
-        "Eres Garlic LLM, un asistente útil que funciona sin internet en la GPU de una PlayStation 4. "
+        "Eres Station AI, un asistente útil que funciona sin internet en la GPU de una PlayStation 4. "
         "Responde en el idioma del usuario, de forma clara y sin rodeos.",
-        "You are Garlic LLM, a helpful assistant running offline on a PlayStation 4's GPU. Answer in the "
+        "You are Station AI, a helpful assistant running offline on a PlayStation 4's GPU. Answer in the "
         "user's language, clearly and directly.",
-        "Você é o Garlic LLM, um assistente útil que funciona sem internet na GPU de um PlayStation 4. "
+        "Você é o Station AI, um assistente útil que funciona sem internet na GPU de um PlayStation 4. "
         "Responda no idioma do usuário, de forma clara e direta.",
-        "Ты — Garlic LLM, полезный ассистент, который работает без интернета на GPU PlayStation 4. Отвечай на "
+        "Ты — Station AI, полезный ассистент, который работает без интернета на GPU PlayStation 4. Отвечай на "
         "языке пользователя, ясно и по делу."},
     [S_LOCAL_GPU] = {"GPU local", "local GPU", "GPU local", "локальный GPU"},
     [S_PY_RUN] = {"Ejecutar Python", "Run Python", "Executar Python", "Запустить Python"},
@@ -133,24 +133,24 @@ static const char* strings[N_STRINGS][N_LANGS] = {
         "I ran your program right here on the PS4, and it failed with this error:",
         "Executei o seu programa aqui mesmo, no PS4, e ele falhou com este erro:",
         "Я запустил твою программу прямо здесь, на PS4, и она завершилась с ошибкой:"},
-    // "Ask for a fix", the request: lists what Garlic's Python has and what it lacks
+    // "Ask for a fix", the request: lists what Station AI's Python has and what it lacks
     [S_PY_FIX_ASK] = {
-        "Corrígelo para el Python 3 de Garlic (MicroPython): hay turtle, pygame y tkinter adaptados a la tele "
+        "Corrígelo para el Python 3 de Station AI (MicroPython): hay turtle, pygame y tkinter adaptados a la tele "
         "(las flechas, Espacio y Enter van al mando), input(), print(), random, math, time, collections, "
         "itertools, string y copy; no hay numpy, matplotlib, archivos, red ni sonido. Casi siempre el fallo "
         "está en el propio código: busca la causa y corrígela sin quitar nada de lo pedido. Escribe el "
         "programa completo en un solo bloque ```python.",
-        "Fix it for Garlic's Python 3 (MicroPython): it has turtle, pygame and tkinter adapted to the TV "
+        "Fix it for Station AI's Python 3 (MicroPython): it has turtle, pygame and tkinter adapted to the TV "
         "(arrows, Space and Enter are on the controller), input(), print(), random, math, time, collections, "
         "itertools, string and copy; there is no numpy, matplotlib, files, network or sound. The bug is "
         "almost always in the code itself: find the cause and fix it without dropping anything that was asked "
         "for. Write the whole program in a single ```python block.",
-        "Corrija-o para o Python 3 do Garlic (MicroPython): há turtle, pygame e tkinter adaptados à TV (as "
+        "Corrija-o para o Python 3 do Station AI (MicroPython): há turtle, pygame e tkinter adaptados à TV (as "
         "setas, Espaço e Enter ficam no controle), input(), print(), random, math, time, collections, "
         "itertools, string e copy; não há numpy, matplotlib, arquivos, rede nem som. Quase sempre a falha "
         "está no próprio código: encontre a causa e corrija sem tirar nada do que foi pedido. Escreva o "
         "programa completo em um único bloco ```python.",
-        "Исправь её для Python 3 в Garlic (MicroPython): есть turtle, pygame и tkinter для телевизора "
+        "Исправь её для Python 3 в Station AI (MicroPython): есть turtle, pygame и tkinter для телевизора "
         "(стрелки, пробел и Enter — на геймпаде), input(), print(), random, math, time, collections, "
         "itertools, string и copy; нет numpy, matplotlib, файлов, сети и звука. Почти всегда ошибка в самом "
         "коде: найди причину и исправь её, ничего не убирая из того, что просили. Напиши всю программу "
@@ -160,8 +160,8 @@ static const char* strings[N_STRINGS][N_LANGS] = {
     [S_THINKING] = {"Pensando…", "Thinking…", "Pensando…", "Думаю…"},
     [S_LISTENING_SHORT] = {"Te escucho…", "Listening…", "Estou ouvindo…", "Слушаю…"},
     [S_VOICE_LOADING] = {"Preparando la voz…", "Getting the voice ready…", "Preparando a voz…", "Готовлю голос…"},
-    [S_VOICE_NO_TTS] = {"La voz no está disponible: Garlic responderá con texto", "The voice is not available: Garlic will answer in text",
-                        "A voz não está disponível: o Garlic responderá em texto", "Голос недоступен: Garlic ответит текстом"},
+    [S_VOICE_NO_TTS] = {"La voz no está disponible: Station AI responderá con texto", "The voice is not available: Station AI will answer in text",
+                        "A voz não está disponível: o Station AI responderá em texto", "Голос недоступен: Station AI ответит текстом"},
     // "Think" (R3)
     [S_THINK_OFF_HINT] = {"Pensar: no", "Think: off", "Pensar: não", "Думать: нет"},
     [S_THINK_ON_HINT] = {"Pensar: sí", "Think: on", "Pensar: sim", "Думать: да"},
@@ -1506,7 +1506,7 @@ static int chip(int x_right, int cy, const char* text, uint32_t color, uint32_t 
 static void draw_header(const ChatView* v) {
     draw_image(&logo_s, 64, (HEADER_H - logo_s.h) / 2 - 2, 255);
     int tx = 64 + (logo_s.w ? logo_s.w + 14 : 0);
-    tx = draw_str(&font_big, tx, (HEADER_H - font_big.line) / 2, "Garlic", 0xFFFFFF);
+    tx = draw_str(&font_big, tx, (HEADER_H - font_big.line) / 2, "Station", 0xFFFFFF);
     draw_str(&font_big, tx + font_big.space, (HEADER_H - font_big.line) / 2, "LLM", C_ACCENT_HI);
     int cy = HEADER_H / 2, x = SCREEN_W - 64;
     char a[24], b[24], ctx[96];
@@ -1629,10 +1629,10 @@ static void draw_empty(const ChatView* v) {
     circle(cx, y + logo_l.h / 2, 92, 0, C_ACCENT_HI, 26);
     draw_image(&logo_l, cx - logo_l.w / 2, y, 255);
     y += logo_l.h + 26;
-    int w1 = str_width(&font_big, "Garlic"), w2 = str_width(&font_big, "LLM");
+    int w1 = str_width(&font_big, "Station"), w2 = str_width(&font_big, "AI");
     int x = cx - (w1 + font_big.space + w2) / 2;
-    x = draw_str(&font_big, x, y, "Garlic", 0xFFFFFF);
-    draw_str(&font_big, x + font_big.space, y, "LLM", C_ACCENT_HI);
+    x = draw_str(&font_big, x, y, "Station", 0xFFFFFF);
+    draw_str(&font_big, x + font_big.space, y, "AI", C_ACCENT_HI);
     y += font_big.line + 14;
     char line_[160];
     snprintf(line_, sizeof(line_), tr(S_TAGLINE), v->model ? v->model : "");
@@ -1785,10 +1785,10 @@ static void brand_block(int y) {
     circle(cx, y + logo_l.h / 2, 98, 0, C_ACCENT_HI, 22);
     draw_image(&logo_l, cx - logo_l.w / 2, y, 255);
     y += logo_l.h + 28;
-    int w1 = str_width(&font_big, "Garlic"), w2 = str_width(&font_big, "LLM");
+    int w1 = str_width(&font_big, "Station"), w2 = str_width(&font_big, "AI");
     int x = cx - (w1 + font_big.space + w2) / 2;
-    x = draw_str(&font_big, x, y, "Garlic", 0xFFFFFF);
-    draw_str(&font_big, x + font_big.space, y, "LLM", C_ACCENT_HI);
+    x = draw_str(&font_big, x, y, "Station", 0xFFFFFF);
+    draw_str(&font_big, x + font_big.space, y, "AI", C_ACCENT_HI);
 }
 
 void draw_loading(float frac, const char* what) {

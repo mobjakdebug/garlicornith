@@ -13,6 +13,13 @@
 #include "attn.h"
 #include "attn_tq.h"     // TurboQuant 4-bit cache (chat/engine.c tq)
 
+// Capability marker (chat/engine.c looks for the name): the kernels above address the cache's blocks of positions by
+// their stride, so the context can be more than 16K. A kernels.bin without it keeps the app at 8K. Never dispatched.
+kernel __attribute__((reqd_work_group_size(64, 1, 1)))
+void tq_stride_v2(global uint* x, uint n) {
+    if (n == 0xFFFFFFFFu) x[0] = 1;
+}
+
 // x[i] *= sigmoid(g[i]): the output gate of the full-attention layers.
 kernel __attribute__((reqd_work_group_size(256, 1, 1)))
 void mul_sigmoid(global float* x, global const float* g, uint n) {

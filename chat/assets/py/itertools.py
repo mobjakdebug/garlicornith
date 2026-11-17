@@ -1,4 +1,4 @@
-# itertools for Garlic (the CPython functions programs use, as generators).
+# itertools for Station AI (the CPython functions programs use, as generators).
 def count(start=0, step=1):
     n = start
     while True:

@@ -57,6 +57,11 @@ jobs:
         timeout-minutes: 20
         run: python pc/ci_toolchain.py
 
+      - name: the GPU kernels, from shaders/ (the C code has to agree with them)
+        run: |
+          set -o pipefail
+          python pc/export_kernels_9b.py 2>&1 | tail -20
+
       - name: compile without weights (this only proves the C code builds)
         run: |
           set -o pipefail
