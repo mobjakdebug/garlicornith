@@ -9,6 +9,10 @@
 // reason is in the log, and on the screen for a few seconds).
 int dl_run(void);
 
+// A JSON POST to an OpenAI-compatible server (the image backend, imgen.c): the whole answer in a buffer the caller
+// frees, *out_len its length and *status the HTTP code (-1 when the request itself failed). NULL on failure.
+char* dl_http_post(const char* url, const char* auth, const char* body, size_t blen, size_t* out_len, int* status);
+
 // The directory of the last model downloaded here (/data/station_model.txt), or NULL if there is none. The caller
 // still checks that its model.idx is there.
 const char* dl_model_dir(void);

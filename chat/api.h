@@ -9,8 +9,13 @@
 
 #define API_PORT 8080
 
+// What a request asks for: a reply on /v1/chat/completions, /v1/completions or /v1/responses (the same tokens, three
+// shapes), or a picture on /v1/images/generations (imgen.c).
+typedef enum { API_JOB_CHAT, API_JOB_COMPLETIONS, API_JOB_RESPONSES, API_JOB_IMAGES } ApiKind;
+
 typedef struct ApiJob {
     int fd;                     // the connection: the main thread writes the whole reply to it
+    ApiKind kind;
     char* body;                 // the request's JSON (validated by the server thread)
     size_t body_len;
     volatile int done;          // 1 once the main thread has written the reply

@@ -53,6 +53,15 @@ jobs:
           python tests/gguf_test.py
           python tests/ornith_layout_test.py
 
+      - name: host tests (the API's protocol, its jobs, and the PNG reader), with gcc, no toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          gcc -std=gnu99 -Wall -Wextra -g -fsanitize=address,undefined -I chat tests/api_proto_test.c chat/api_proto.c -o build/api_proto_test
+          gcc -std=gnu99 -Wall -Wextra -g -fsanitize=address,undefined -I chat tests/api_run_test.c chat/api_proto.c -o build/api_run_test
+          gcc -std=c99 -Wall -Wextra -g -fsanitize=address,undefined -I chat tests/img_test.c chat/img.c chat/png.c -o build/img_test
+          build/api_proto_test && build/api_run_test && build/img_test
+
       - name: tools (OpenOrbis + Zig)
         timeout-minutes: 20
         run: python pc/ci_toolchain.py

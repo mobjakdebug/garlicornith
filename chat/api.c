@@ -133,11 +133,23 @@ static int read_request(int fd, char** buf_out, size_t* len_out, HttpRequest* re
     return r == 0 ? 0 : -1;
 }
 
-static void serve_chat(int fd, HttpRequest* req) {
+static void serve_job(int fd, HttpRequest* req, ApiKind kind) {
     JNode* pool = malloc(sizeof(JNode) * API_MAX_NODES);
     ChatRequest cr;
     const char* err = NULL;
-    if (!pool || api_chat_parse(req->body, req->body_len, pool, API_MAX_NODES, &cr, &err)) {
+    int bad = 0;
+    if (!pool) {
+        bad = 1;
+        err = "Out of memory.";
+    } else if (kind == API_JOB_CHAT) {
+        bad = api_chat_parse(req->body, req->body_len, pool, API_MAX_NODES, &cr, &err) != 0;
+    } else if (kind == API_JOB_IMAGES) {   // (the body is checked by imgen.c, where its fields are read)
+        bad = json_parse(req->body, req->body_len, pool, API_MAX_NODES) < 0;
+        if (bad) err = "The body must be a JSON object.";
+    } else {
+        bad = api_text_parse(req->body, req->body_len, pool, API_MAX_NODES, &cr, kind == API_JOB_RESPONSES, &err) != 0;
+    }
+    if (bad) {
         free(pool);
         reply_json_error(fd, 400, "Bad Request", err ? err : "Out of memory.", "invalid_request_error", "invalid_body");
         return;
@@ -154,6 +166,7 @@ static void serve_chat(int fd, HttpRequest* req) {
     memcpy(body, req->body, req->body_len);
     body[req->body_len] = 0;
     job->fd = fd;
+    job->kind = kind;
     job->body = body;
     job->body_len = req->body_len;
     scePthreadMutexLock(&api_mu);
@@ -170,7 +183,11 @@ static void serve_chat(int fd, HttpRequest* req) {
                          "busy");
         return;
     }
-    say("api: chat request, %zu bytes, %s", req->body_len, cr.stream ? "streamed" : "whole reply");
+    say("api: %s request, %zu bytes, %s", kind == API_JOB_CHAT      ? "chat"
+                                         : kind == API_JOB_COMPLETIONS ? "completions"
+                                         : kind == API_JOB_RESPONSES   ? "responses"
+                                                                       : "images",
+        req->body_len, kind == API_JOB_IMAGES ? "waiting for a picture" : cr.stream ? "streamed" : "whole reply");
     // the main loop writes the reply to fd; the connection is closed here once it is written
     while (!job->done) sceKernelUsleep(5000);
     free(job->body);
@@ -199,7 +216,8 @@ static void handle(int fd) {
     } else if (!authorized(&req)) {
         reply_json_error(fd, 401, "Unauthorized", "Missing or wrong API key.", "invalid_request_error",
                          "invalid_api_key");
-    } else if (!strcmp(req.method, "GET") && (!strcmp(req.path, "/v1/models") || !strcmp(req.path, "/models"))) {
+    } else if (!strcmp(req.method, "GET") &&
+               (!strcmp(req.path, "/v1/models") || !strcmp(req.path, "/models") || !strncmp(req.path, "/v1/models/", 11))) {
         Sb s;
         sb_init(&s);
         api_json_models(&s, model_name, 0);
@@ -213,10 +231,16 @@ static void handle(int fd) {
         if (spec) reply(fd, 200, "OK", "application/json", (const char*)spec, n);
         else reply_json_error(fd, 404, "Not Found", "The API description is missing.", "invalid_request_error", NULL);
         free(spec);
-    } else if (!strcmp(req.method, "POST") && !strcmp(req.path, "/v1/chat/completions")) {
-        serve_chat(fd, &req);
+    } else if (!strcmp(req.method, "POST") &&
+               (!strcmp(req.path, "/v1/chat/completions") || !strcmp(req.path, "/v1/completions") ||
+                !strcmp(req.path, "/v1/responses") || !strcmp(req.path, "/v1/images/generations"))) {
+        ApiKind kind = !strcmp(req.path, "/v1/chat/completions")  ? API_JOB_CHAT
+                       : !strcmp(req.path, "/v1/completions")     ? API_JOB_COMPLETIONS
+                       : !strcmp(req.path, "/v1/responses")       ? API_JOB_RESPONSES
+                                                                  : API_JOB_IMAGES;
+        serve_job(fd, &req, kind);
         free(buf);
-        return;   // (serve_chat keeps the connection until the main loop has written the reply)
+        return;   // (serve_job keeps the connection until the main loop has written the reply)
     } else {
         reply_json_error(fd, 404, "Not Found", "No such endpoint.", "invalid_request_error", NULL);
     }

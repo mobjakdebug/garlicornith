@@ -458,6 +458,81 @@ void api_json_chunk(Sb* out, const char* id, const char* model, long long create
     sb_str(out, "}]}");
 }
 
+void api_json_text_completion(Sb* out, const char* id, const char* model, long long created, const char* text,
+                              size_t tlen, const char* finish, int prompt_tokens, int completion_tokens) {
+    sb_str(out, "{\"id\":");
+    sb_json_str(out, id, strlen(id));
+    sb_str(out, ",\"object\":\"text_completion\",\"created\":");
+    sb_int(out, created);
+    sb_str(out, ",\"model\":");
+    sb_json_str(out, model, strlen(model));
+    sb_str(out, ",\"choices\":[{\"text\":");
+    sb_json_str(out, text, tlen);
+    sb_str(out, ",\"index\":0,\"logprobs\":null,\"finish_reason\":");
+    sb_json_str(out, finish, strlen(finish));
+    sb_str(out, "}],\"usage\":{\"prompt_tokens\":");
+    sb_int(out, prompt_tokens);
+    sb_str(out, ",\"completion_tokens\":");
+    sb_int(out, completion_tokens);
+    sb_str(out, ",\"total_tokens\":");
+    sb_int(out, prompt_tokens + completion_tokens);
+    sb_str(out, "}}");
+}
+
+void api_json_text_chunk(Sb* out, const char* id, const char* model, long long created, const char* text, size_t tlen,
+                         const char* finish) {
+    sb_str(out, "{\"id\":");
+    sb_json_str(out, id, strlen(id));
+    sb_str(out, ",\"object\":\"text_completion\",\"created\":");
+    sb_int(out, created);
+    sb_str(out, ",\"model\":");
+    sb_json_str(out, model, strlen(model));
+    sb_str(out, ",\"choices\":[{\"text\":");
+    sb_json_str(out, text, tlen);
+    sb_str(out, ",\"index\":0,\"logprobs\":null,\"finish_reason\":");
+    if (finish) sb_json_str(out, finish, strlen(finish));
+    else sb_str(out, "null");
+    sb_str(out, "}]}");
+}
+
+void api_json_response(Sb* out, const char* id, const char* model, long long created, const char* text, size_t tlen,
+                       const char* status, int input_tokens, int output_tokens) {
+    sb_str(out, "{\"id\":");
+    sb_json_str(out, id, strlen(id));
+    sb_str(out, ",\"object\":\"response\",\"created_at\":");
+    sb_int(out, created);
+    sb_str(out, ",\"status\":");
+    sb_json_str(out, status, strlen(status));
+    sb_str(out, ",\"model\":");
+    sb_json_str(out, model, strlen(model));
+    sb_str(out, ",\"output\":[{\"id\":\"msg_0\",\"type\":\"message\",\"status\":\"completed\","
+                "\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":");
+    sb_json_str(out, text, tlen);
+    sb_str(out, ",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":");
+    sb_int(out, input_tokens);
+    sb_str(out, ",\"output_tokens\":");
+    sb_int(out, output_tokens);
+    sb_str(out, ",\"total_tokens\":");
+    sb_int(out, input_tokens + output_tokens);
+    sb_str(out, "}}");
+}
+
+// The events of a streamed response: the type, and what each one carries (the text so far, or the delta itself).
+void api_json_response_event(Sb* out, const char* type, const char* response_id, const char* text, size_t tlen) {
+    sb_str(out, "{\"type\":");
+    sb_json_str(out, type, strlen(type));
+    sb_str(out, ",\"response_id\":");
+    sb_json_str(out, response_id, strlen(response_id));
+    if (!strcmp(type, "response.output_text.delta")) {
+        sb_str(out, ",\"item_id\":\"msg_0\",\"output_index\":0,\"content_index\":0,\"delta\":");
+        sb_json_str(out, text, tlen);
+    } else if (!strcmp(type, "response.output_text.done")) {
+        sb_str(out, ",\"item_id\":\"msg_0\",\"output_index\":0,\"content_index\":0,\"text\":");
+        sb_json_str(out, text, tlen);
+    }
+    sb_str(out, "}");
+}
+
 void api_json_error(Sb* out, const char* message, const char* type, const char* code) {
     sb_str(out, "{\"error\":{\"message\":");
     sb_json_str(out, message, strlen(message));
@@ -476,6 +551,8 @@ int api_chat_parse(const char* body, size_t len, JNode* pool, int max, ChatReque
     req->temperature = 0.7;
     req->max_tokens = 512;
     req->messages = -1;
+    req->prompt = -1;
+    req->instructions = -1;
     req->root = json_parse(body, len, pool, max);
     if (req->root < 0 || pool[req->root].type != J_OBJ) {
         *err = "The body must be a JSON object.";
@@ -530,4 +607,82 @@ int api_chat_parse(const char* body, size_t len, JNode* pool, int max, ChatReque
         req->has_seed = 1;
     }
     return 0;
+}
+
+// The knobs the two older endpoints share with a chat (temperature, the token limit, stream, seed).
+static int text_knobs(const JNode* pool, ChatRequest* req, const char* max_key, const char** err) {
+    int t = json_get(pool, req->root, "temperature");
+    if (t >= 0 && pool[t].type != J_NULL) {
+        if (pool[t].type != J_NUM || pool[t].num < 0 || pool[t].num > 2) {
+            *err = "'temperature' must be a number from 0 to 2.";
+            return -1;
+        }
+        req->temperature = pool[t].num;
+    }
+    int mt = json_get(pool, req->root, max_key);
+    if (mt < 0) mt = json_get(pool, req->root, "max_tokens");
+    if (mt >= 0 && pool[mt].type != J_NULL) {
+        if (pool[mt].type != J_NUM || pool[mt].num < 1 || pool[mt].num > 16384) {
+            *err = "'max_tokens' must be a number from 1 to 16384.";
+            return -1;
+        }
+        req->max_tokens = (int)pool[mt].num;
+    }
+    int s = json_get(pool, req->root, "stream");
+    if (s >= 0 && pool[s].type != J_NULL) {
+        if (pool[s].type != J_BOOL) {
+            *err = "'stream' must be true or false.";
+            return -1;
+        }
+        req->stream = pool[s].b;
+    }
+    int sd = json_get(pool, req->root, "seed");
+    if (sd >= 0 && pool[sd].type == J_NUM && pool[sd].num >= 0) {
+        req->seed = (unsigned)pool[sd].num;
+        req->has_seed = 1;
+    }
+    return 0;
+}
+
+int api_text_parse(const char* body, size_t len, JNode* pool, int max, ChatRequest* req, int responses,
+                   const char** err) {
+    memset(req, 0, sizeof(*req));
+    req->temperature = 0.7;
+    req->max_tokens = 512;
+    req->messages = -1;
+    req->prompt = -1;
+    req->instructions = -1;
+    req->root = json_parse(body, len, pool, max);
+    if (req->root < 0 || pool[req->root].type != J_OBJ) {
+        *err = "The body must be a JSON object.";
+        return -1;
+    }
+    const char* key = responses ? "input" : "prompt";
+    int p = json_get(pool, req->root, key);
+    if (p < 0 || pool[p].type == J_NULL) {
+        *err = responses ? "'input' is required." : "'prompt' is required.";
+        return -1;
+    }
+    if (pool[p].type == J_STR) {
+        req->prompt = p;
+    } else if (pool[p].type == J_ARR && responses) {   // (a completions prompt is one text here)
+        for (int c = pool[p].first; c >= 0; c = pool[c].next) {
+            if (pool[c].type != J_OBJ && pool[c].type != J_STR) {
+                *err = "Each item of 'input' must be a message or a string.";
+                return -1;
+            }
+            req->n_messages++;
+        }
+        if (!req->n_messages) {
+            *err = "'input' must not be empty.";
+            return -1;
+        }
+        req->messages = p;
+    } else {
+        *err = responses ? "'input' must be a string or an array of messages." : "'prompt' must be a string.";
+        return -1;
+    }
+    int ins = responses ? json_get(pool, req->root, "instructions") : -1;
+    if (ins >= 0 && pool[ins].type == J_STR) req->instructions = ins;
+    return text_knobs(pool, req, responses ? "max_output_tokens" : "max_tokens", err);
 }

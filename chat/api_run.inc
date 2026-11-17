@@ -33,31 +33,76 @@ static int api_send_event(int fd, const char* json) {
     return r;
 }
 
-// Builds the prompt: each message as <|im_start|>role\ncontent<|im_end|>\n, then the assistant's turn with the empty
-// thought block (as the chat does, enable_thinking=false). Returns the number of ids, or -1 if it does not fit.
+// One turn of the prompt: <|im_start|>role\ncontent<|im_end|>\n. Returns the new length, or -1 if it does not fit.
+static int api_prompt_turn(int n, const char* role, const char* text, size_t len) {
+    api_ids[n++] = IM_START;
+    n = encode_into(api_ids, n, 16384, role);
+    n = encode_into(api_ids, n, 16384, "\n");
+    if (len) n = encode_into(api_ids, n, 16384, text);
+    api_ids[n++] = IM_END;
+    return encode_into(api_ids, n, 16384, "\n");
+}
+
+// Builds the prompt from a request: the instruction (if any), then the conversation or the one text, then the
+// assistant's turn with the empty thought block (as the chat does, enable_thinking=false). Returns the number of ids,
+// or -1 if it does not fit.
 static int api_prompt(const JNode* pool, const ChatRequest* cr) {
     int n = 0;
     size_t total = 0;
-    for (int m = pool[cr->messages].first; m >= 0; m = pool[m].next) {
-        Sb content;
-        sb_init(&content);
+    Sb text;
+    sb_init(&text);
+    if (cr->instructions >= 0) {
+        json_str_sb(pool, cr->instructions, &text);
+        if (!text.p || text.n > API_MAX_TEXT) {
+            sb_free(&text);
+            return -1;
+        }
+        if ((n = api_prompt_turn(n, "system", text.p, text.n)) >= 16380) {
+            sb_free(&text);
+            return -1;
+        }
+        text.n = 0;
+    }
+    if (cr->prompt >= 0) {   // one text (an older endpoint): a single user turn
+        json_str_sb(pool, cr->prompt, &text);
+        if (!text.p || text.n > API_MAX_TEXT) {
+            sb_free(&text);
+            return -1;
+        }
+        n = api_prompt_turn(n, "user", text.p, text.n);
+        sb_free(&text);
+        if (n < 0 || n >= 16380) return -1;
+        text.n = 0;
+        sb_init(&text);
+    }
+    for (int m = cr->prompt >= 0 || cr->messages < 0 ? -1 : pool[cr->messages].first; m >= 0; m = pool[m].next) {
+        text.n = 0;
         char role[16] = "user";
-        int ok = api_message(pool, m, role, sizeof(role), &content) == 0;
-        if (ok) total += content.n;
-        if (!ok || total > API_MAX_TEXT) {
-            sb_free(&content);
+        int ok;
+        if (pool[m].type == J_STR) {   // (an /v1/responses input may be a bare string)
+            ok = 0;
+            json_str_sb(pool, m, &text);
+        } else {
+            ok = api_message(pool, m, role, sizeof(role), &text) == 0;
+        }
+        if (!ok || !text.p) {
+            sb_free(&text);
+            return -1;
+        }
+        total += text.n;
+        if (total > API_MAX_TEXT) {
+            sb_free(&text);
             return -1;
         }
         if (strcmp(role, "system") && strcmp(role, "assistant") && strcmp(role, "user") && strcmp(role, "tool"))
             strcpy(role, "user");
-        api_ids[n++] = IM_START;
-        n = encode_into(api_ids, n, 16384, role);
-        n = encode_into(api_ids, n, 16384, "\n");
-        if (content.p) n = encode_into(api_ids, n, 16384, content.p);
-        api_ids[n++] = IM_END;
-        n = encode_into(api_ids, n, 16384, "\n");
-        sb_free(&content);
+        n = api_prompt_turn(n, role, text.p, text.n);
+        if (n < 0 || n >= 16380) {
+            sb_free(&text);
+            return -1;
+        }
     }
+    sb_free(&text);
     api_ids[n++] = IM_START;
     n = encode_into(api_ids, n, 16384, "assistant\n");
     if (eng.qwen35) {
@@ -86,10 +131,17 @@ static void api_error(int fd, const char* status_line, const char* message, cons
 
 static void api_job(ApiJob* job) {
     static unsigned api_count;
+    if (job->kind == API_JOB_IMAGES) {   // the picture is drawn elsewhere (imgen.c): no tokens, no conversation
+        imgen_run(job->fd, job->body, job->body_len);
+        return;
+    }
+    int resp_api = job->kind == API_JOB_RESPONSES;
     JNode* pool = malloc(sizeof(JNode) * API_MAX_NODES);
     ChatRequest cr;
     const char* err = NULL;
-    if (!pool || api_chat_parse(job->body, job->body_len, pool, API_MAX_NODES, &cr, &err)) {
+    if (!pool || (job->kind == API_JOB_CHAT
+                      ? api_chat_parse(job->body, job->body_len, pool, API_MAX_NODES, &cr, &err)
+                      : api_text_parse(job->body, job->body_len, pool, API_MAX_NODES, &cr, resp_api, &err))) {
         free(pool);
         api_error(job->fd, "HTTP/1.1 400 Bad Request", err ? err : "Out of memory.", "invalid_request_error",
                   "invalid_body");
@@ -116,10 +168,13 @@ static void api_job(ApiJob* job) {
     thinking = think_turn = 0;
     sys_pre = 0;
     view.scroll = 0;
-    api_chat_begin();   // (clears the conversation: a note says that a request is being answered)
+    api_chat_begin(0);   // (clears the conversation: a note says that a request is being answered)
     if (cr.has_seed) seed = cr.seed;
     char id[32];
-    snprintf(id, sizeof(id), "chatcmpl-%u", ++api_count);
+    snprintf(id, sizeof(id), "%s%u", job->kind == API_JOB_CHAT      ? "chatcmpl-"
+                                     : job->kind == API_JOB_RESPONSES ? "resp_"
+                                                                      : "cmpl-",
+             ++api_count);
     const char* model = api_model();
     long long created = (long long)time(NULL);
     say("api: prompt of %d tokens, up to %d new, T %.2f%s", n, cr.max_tokens, cr.temperature,
@@ -141,7 +196,9 @@ static void api_job(ApiJob* job) {
         streamed = 1;
         Sb first;
         sb_init(&first);
-        api_json_chunk(&first, id, model, created, "assistant", "", 0, NULL);
+        if (job->kind == API_JOB_CHAT) api_json_chunk(&first, id, model, created, "assistant", "", 0, NULL);
+        else if (job->kind == API_JOB_COMPLETIONS) api_json_text_chunk(&first, id, model, created, "", 0, NULL);
+        else api_json_response_event(&first, "response.created", id, "", 0);
         if (!client_gone && first.p && api_send_event(fd, first.p)) client_gone = 1;
         sb_free(&first);
     }
@@ -176,7 +233,10 @@ static void api_job(ApiJob* job) {
             if (whole) {
                 Sb ev;
                 sb_init(&ev);
-                api_json_chunk(&ev, id, model, created, NULL, pend.p, whole, NULL);
+                if (job->kind == API_JOB_CHAT) api_json_chunk(&ev, id, model, created, NULL, pend.p, whole, NULL);
+                else if (job->kind == API_JOB_COMPLETIONS)
+                    api_json_text_chunk(&ev, id, model, created, pend.p, whole, NULL);
+                else api_json_response_event(&ev, "response.output_text.delta", id, pend.p, whole);
                 if (ev.p && api_send_event(fd, ev.p)) client_gone = 1;
                 sb_free(&ev);
                 memmove(pend.p, pend.p + whole, pend.n - whole);
@@ -216,10 +276,31 @@ static void api_job(ApiJob* job) {
         if (!client_gone && !error) {
             Sb last;
             sb_init(&last);
-            api_json_chunk(&last, id, model, created, NULL, "", 0, finish);
-            if (last.p) api_send_event(fd, last.p);
-            sb_free(&last);
-            api_send(fd, "data: [DONE]\n\n", 14);
+            if (job->kind == API_JOB_CHAT) {
+                api_json_chunk(&last, id, model, created, NULL, "", 0, finish);
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                api_send(fd, "data: [DONE]\n\n", 14);
+            } else if (job->kind == API_JOB_COMPLETIONS) {
+                api_json_text_chunk(&last, id, model, created, "", 0, finish);
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                api_send(fd, "data: [DONE]\n\n", 14);
+            } else {   // /v1/responses: the text is done, then the response whole (the stream's own end)
+                api_json_response_event(&last, "response.output_text.done", id, text.p ? text.p : "", text.n);
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                Sb obj;
+                sb_init(&obj);
+                api_json_response(&obj, id, model, created, text.p ? text.p : "", text.n, "completed", n, produced);
+                sb_init(&last);
+                sb_str(&last, "{\"type\":\"response.completed\",\"response\":");
+                if (obj.p) sb_add(&last, obj.p, obj.n);
+                sb_str(&last, "}");
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                sb_free(&obj);
+            }
         }
         if (error && !client_gone) {   // the headers are out: the error goes in the stream
             Sb e;
@@ -234,7 +315,12 @@ static void api_job(ApiJob* job) {
         Sb body, head;
         sb_init(&body);
         sb_init(&head);
-        api_json_completion(&body, id, model, created, text.p ? text.p : "", text.n, finish, n, produced);
+        if (job->kind == API_JOB_CHAT)
+            api_json_completion(&body, id, model, created, text.p ? text.p : "", text.n, finish, n, produced);
+        else if (job->kind == API_JOB_COMPLETIONS)
+            api_json_text_completion(&body, id, model, created, text.p ? text.p : "", text.n, finish, n, produced);
+        else
+            api_json_response(&body, id, model, created, text.p ? text.p : "", text.n, "completed", n, produced);
         sb_str(&head, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ");
         sb_int(&head, (long long)body.n);
         sb_str(&head, "\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n");

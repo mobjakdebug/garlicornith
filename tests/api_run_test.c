@@ -11,6 +11,7 @@
 
 #include "api.h"
 #include "api_proto.h"
+#include "imgen.h"
 
 // ---- mock model and tokenizer ----------------------------------------------------------------------------------------
 #define IM_START 1000u
@@ -69,7 +70,14 @@ static void say(const char* fmt, ...) {
     (void)fmt;
 }
 static double now(void) { return 0; }
-static void api_chat_begin(void) { chat_begun++, msgs_cleared++; }   // (the real one clears the conversation)
+static void api_chat_begin(int images) { (void)images; chat_begun++, msgs_cleared++; }   // (the real one clears it)
+static int imgen_calls;
+static char imgen_body[512];
+void imgen_run(int fd, const char* body, size_t len) {   // (the real one posts to the image backend)
+    (void)fd;
+    imgen_calls++;
+    snprintf(imgen_body, sizeof(imgen_body), "%.*s", (int)len, body);
+}
 static void api_chat_reply(void) { chat_replies++; }
 static int api_chat_step(int produced) { return stop_at >= 0 && produced >= stop_at; }
 static void api_chat_end(void) { chat_ended++; }
@@ -164,7 +172,7 @@ static int fails, checks;
         }                                                                     \
     } while (0)
 
-static void run_job(const char* body, const uint32_t* sc, int sc_len) {
+static void run_job_kind(const char* body, const uint32_t* sc, int sc_len, ApiKind kind) {
     memset(wire, 0, sizeof(wire));
     wire_n = 0;
     script = sc;
@@ -177,7 +185,11 @@ static void run_job(const char* body, const uint32_t* sc, int sc_len) {
     job.body = (char*)body;
     job.body_len = strlen(body);
     job.fd = 7;
+    job.kind = kind;
     api_job(&job);
+}
+static void run_job(const char* body, const uint32_t* sc, int sc_len) {
+    run_job_kind(body, sc, sc_len, API_JOB_CHAT);
 }
 
 static const char* body_of(const char* w) {
@@ -221,6 +233,66 @@ static void test_stream(void) {
     CHECK(strstr(wire, "data: [DONE]\n\n") != NULL);
     CHECK(strstr(wire, "data: [DONE]\n\n") > strstr(wire, "\"finish_reason\":\"stop\""));
     CHECK(strstr(body_of(wire), "\"content\":\"\xc3\xa9\"") != NULL);
+}
+
+// /v1/completions: one text in, the older text_completion out (whole or chunked), the same tokens as a chat would.
+static void test_completions_endpoint(void) {
+    static const uint32_t sc[] = {'H' + 1, 'o' + 1, 'l' + 1, 'a' + 1};
+    run_job_kind("{\"prompt\":\"hi\",\"max_tokens\":10}", sc, 4, API_JOB_COMPLETIONS);
+    CHECK(strncmp(wire, "HTTP/1.1 200 OK", 15) == 0);
+    CHECK(strstr(wire, "\"object\":\"text_completion\"") != NULL);
+    CHECK(strstr(wire, "\"text\":\"Hola\"") != NULL);
+    CHECK(strstr(wire, "\"finish_reason\":\"stop\"") != NULL);
+    CHECK(strstr(wire, "\"id\":\"cmpl-") != NULL);
+    CHECK(prompt_len_seen == 27);   // the same prompt a chat with one user message builds
+    CHECK(strstr(wire, "\"completion_tokens\":4") != NULL);
+
+    run_job_kind("{\"prompt\":\"hi\",\"stream\":true}", sc, 4, API_JOB_COMPLETIONS);
+    CHECK(strstr(wire, "Content-Type: text/event-stream") != NULL);
+    CHECK(strstr(wire, "\"text\":\"H\"") != NULL);
+    CHECK(strstr(wire, "\"finish_reason\":\"stop\"") != NULL);
+    CHECK(strstr(wire, "data: [DONE]\n\n") != NULL);
+
+    run_job_kind("{\"max_tokens\":4}", sc, 4, API_JOB_COMPLETIONS);
+    CHECK(strncmp(wire, "HTTP/1.1 400", 12) == 0);
+    CHECK(strstr(wire, "'prompt' is required.") != NULL);
+}
+
+// /v1/responses: the newer shape, with its own events when streamed (and no [DONE] at the end).
+static void test_responses_endpoint(void) {
+    static const uint32_t sc[] = {'H' + 1, 'i' + 1};
+    run_job_kind("{\"input\":\"hi\",\"max_output_tokens\":10}", sc, 2, API_JOB_RESPONSES);
+    CHECK(strncmp(wire, "HTTP/1.1 200 OK", 15) == 0);
+    CHECK(strstr(wire, "\"object\":\"response\"") != NULL);
+    CHECK(strstr(wire, "\"type\":\"output_text\",\"text\":\"Hi\"") != NULL);
+    CHECK(strstr(wire, "\"input_tokens\":27") != NULL);
+    CHECK(strstr(wire, "\"output_tokens\":2") != NULL);
+    CHECK(strstr(wire, "\"id\":\"resp_") != NULL);
+
+    run_job_kind("{\"input\":\"hi\",\"stream\":true}", sc, 2, API_JOB_RESPONSES);
+    CHECK(strstr(wire, "\"type\":\"response.created\"") != NULL);
+    CHECK(strstr(wire, "\"type\":\"response.output_text.delta\",\"response_id\":\"resp_") != NULL);
+    CHECK(strstr(wire, "\"delta\":\"H\"") != NULL);
+    CHECK(strstr(wire, "\"type\":\"response.output_text.done\"") != NULL);
+    CHECK(strstr(wire, "\"type\":\"response.completed\",\"response\":{\"id\":\"resp_") != NULL);
+    CHECK(strstr(wire, "data: [DONE]") == NULL);
+
+    // an input array of messages, and instructions as the system turn
+    run_job_kind("{\"instructions\":\"be brief\",\"input\":[{\"role\":\"user\",\"content\":\"x\"}]}", sc, 2,
+                 API_JOB_RESPONSES);
+    CHECK(strstr(wire, "\"text\":\"Hi\"") != NULL);
+    CHECK(prompt_len_seen > 27);   // the instruction's turn is in front
+}
+
+// A picture's request never touches the model: it goes to imgen.c, and the chat on screen is left alone.
+static void test_images_job(void) {
+    int begun = chat_begun;
+    imgen_calls = 0;
+    run_job_kind("{\"prompt\":\"a cat\"}", NULL, 0, API_JOB_IMAGES);
+    CHECK(imgen_calls == 1);
+    CHECK(!strcmp(imgen_body, "{\"prompt\":\"a cat\"}"));
+    CHECK(chat_begun == begun);
+    CHECK(wire_n == 0);
 }
 
 static void test_errors(void) {
@@ -342,6 +414,9 @@ int main(void) {
         test_client_gone();
         test_spec();
         test_stop();
+        test_completions_endpoint();
+        test_responses_endpoint();
+        test_images_job();
         CHECK(pos_errors == 0);            // every token went in at the position after the one before
         CHECK(chat_begun == chat_ended);   // every request that took the screen gave it back
         CHECK(chat_replies <= chat_begun);

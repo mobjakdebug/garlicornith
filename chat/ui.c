@@ -121,6 +121,9 @@ static const char* strings[N_STRINGS][N_LANGS] = {
     [S_ERROR_HINT] = {"Pulsa el botón PS para salir.", "Press the PS button to exit.", "Pressione o botão PS para sair.",
                       "Нажмите кнопку PS, чтобы выйти."},
     [S_OFFLINE] = {"100 % sin conexión", "100% offline", "100% offline", "100% офлайн"},
+    [S_IMG_WAIT] = {"Pidiendo una imagen…", "Asking for a picture…", "Pedindo uma imagem…", "Запрашиваю картинку…"},
+    [S_IMG_SAVED] = {"Guardada en %s", "Saved to %s", "Guardada em %s", "Сохранено в %s"},
+    [S_PY_IMAGE] = {"Imagen", "Image", "Imagem", "Картинка"},
     [S_SYSTEM_PROMPT] = {
         "Eres Station AI, un asistente útil que funciona sin internet en la GPU de una PlayStation 4. "
         "Responde en el idioma del usuario, de forma clara y sin rodeos.",
@@ -469,7 +472,7 @@ void ui_free_caches(void) {
 // Darkens the area between the header and the footer by half (cheap: one shift per pixel).
 void ui_dim(void) {
     for (uint32_t* p = back + HEADER_H * SCREEN_W; p < back + (SCREEN_H - FOOTER_H) * SCREEN_W; p++)
-        *p = 0x80000000 | ((*p & 0xFEFEFE) >> 1) + 0x010307;
+        *p = 0x80000000u | (((*p & 0xFEFEFE) >> 1) + 0x010307);
 }
 
 // Rows y0..y1 fade from the background (alpha a0) to the current picture (a1): soft edges for scrolled text.
@@ -1589,7 +1592,45 @@ static void draw_header(const ChatView* v) {
 
 static int ai_head_h(void) { return font_small.line + 30; }   // the role line inside a reply's card
 
-static int msg_layout_width(int who) { return who == MSG_USER ? USER_MAX_W - 2 * BUB_PAD_X : who == MSG_AI ? COL_W - AI_INDENT : COL_W - 240; }
+// ---- pictures (imgen.c: what an image backend drew, shown over its prompt) ------------------------------------
+#define MAX_PICS 6
+#define PIC_MAX_W 780
+#define PIC_MAX_H 438
+typedef struct {
+    Img im;
+    char path[200];
+} Pic;
+static Pic pics[MAX_PICS];
+static int pic_next;
+
+static void blit_rgb(const Img* im, int x, int y) {
+    if (!im->rgb) return;
+    for (int j = 0; j < im->h; j++) {
+        int py = y + j;
+        if (py < clip_y0 || py >= clip_y1) continue;
+        for (int i = 0; i < im->w; i++) {
+            int px = x + i;
+            if (px < clip_x0 || px >= clip_x1) continue;
+            const uint8_t* c = im->rgb + ((size_t)j * im->w + i) * 3;
+            back[py * SCREEN_W + px] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
+        }
+    }
+}
+
+Msg* ui_image_add(const Img* full, const char* prompt, const char* path) {
+    if (!full || !full->rgb) return NULL;
+    Pic* p = &pics[pic_next];
+    img_free(&p->im);
+    if (img_scale(full, &p->im, PIC_MAX_W, PIC_MAX_H)) return NULL;
+    snprintf(p->path, sizeof(p->path), "%s", path ? path : "");
+    Msg* m = msg_new(MSG_IMG);
+    m->img = pic_next;
+    pic_next = (pic_next + 1) % MAX_PICS;
+    msg_append(m, prompt ? prompt : "", prompt ? strlen(prompt) : 0);
+    return m;
+}
+
+static int msg_layout_width(int who) { return who == MSG_USER ? USER_MAX_W - 2 * BUB_PAD_X : who == MSG_AI ? COL_W - AI_INDENT : who == MSG_IMG ? COL_W : COL_W - 240; }
 static const Palette* msg_palette(int who) { return who == MSG_USER ? &PAL_USER : who == MSG_AI ? &PAL_AI : &PAL_NOTE; }
 
 // ---- thinking: the reasoning's last lines while the model thinks; then a short line over the answer ----------------
@@ -1671,6 +1712,10 @@ static void draw_thought(const Msg* m, int x, int y) {
 
 static int msg_height(Msg* m, int typing) {
     Layout* L = layout_get(&m->lay, m->text, m->len, msg_layout_width(m->who), msg_palette(m->who), m->who == MSG_USER);
+    if (m->who == MSG_IMG) {   // a card: the role line, the picture, the prompt under it
+        int ih = pics[m->img < 0 || m->img >= MAX_PICS ? 0 : m->img].im.h;
+        return ai_head_h() + ih + (ih ? 14 : 0) + L->height + CARD_PAD;
+    }
     if (m->who == MSG_USER) return L->height + 2 * BUB_PAD_Y;
     if (m->who == MSG_NOTE) return L->height + 8;
     int h = ai_head_h() + L->height + CARD_PAD + (m->think_n ? think_label_h() : 0);
@@ -1755,6 +1800,27 @@ void draw_chat(ChatView* v) {
                     rrect4(bx, y, bw, h, rad, 0, C_USER, 255);
                     rrect4(bx, y, bw, h, rad, 1, C_USER_LINE, 255);
                     draw_layout(L, bx + BUB_PAD_X, y + BUB_PAD_Y);
+                } else if (m->who == MSG_IMG) {
+                    const Pic* p = &pics[m->img < 0 || m->img >= MAX_PICS ? 0 : m->img];
+                    int cx0 = COL_X - CARD_PAD, cw = COL_W + 2 * CARD_PAD;
+                    rrect(cx0, y, cw, h, 20, C_SURFACE, 255);
+                    rrect_line(cx0, y, cw, h, 20, 1, C_LINE, 255);
+                    circle(COL_X + 5, y + CARD_PAD + 4, 4, 0, C_ACCENT_2, 255);
+                    draw_str(&font_small, COL_X + 18, y + CARD_PAD + 4 - font_small.line / 2, tr(S_PY_IMAGE),
+                             C_TEXT_DIM);
+                    if (p->path[0]) {   // where it went, quiet, on the right of the role line
+                        const char* name = strrchr(p->path, '/');
+                        draw_str(&font_small, COL_X + COL_W - str_width(&font_small, name ? name + 1 : p->path),
+                                 y + CARD_PAD + 4 - font_small.line / 2, name ? name + 1 : p->path, C_TEXT_MUTED);
+                    }
+                    int iy = y + ai_head_h();
+                    if (p->im.rgb) {   // centred in the card, its prompt under it
+                        int ix = COL_X + (COL_W - p->im.w) / 2;
+                        blit_rgb(&p->im, ix, iy);
+                        rrect_line(ix - 1, iy - 1, p->im.w + 2, p->im.h + 2, 8, 1, C_LINE_HI, 255);
+                        iy += p->im.h + 14;
+                    }
+                    draw_layout(L, COL_X, iy);
                 } else if (m->who == MSG_NOTE) {
                     int nx = (SCREEN_W - L->max_w) / 2;
                     fill(COL_X + 120, y + h / 2, nx - COL_X - 150, 1, C_LINE);
@@ -1859,6 +1925,7 @@ static void brand_block(int y) {
 }
 
 void draw_loading(float frac, const char* what) {
+    int unknown = frac < 0;
     draw_background();
     brand_block(230);
     // a card under the mark: what is happening, how far, and the bar itself with a mint head
@@ -1866,16 +1933,21 @@ void draw_loading(float frac, const char* what) {
     rrect(x, y, cw, ch, 20, C_SURFACE, 255);
     rrect_line(x, y, cw, ch, 20, 1, C_LINE, 255);
     char pc[16];
-    int pct = (int)(clamp01(frac) * 100);
-    snprintf(pc, sizeof(pc), "%d %%", pct);
+    snprintf(pc, sizeof(pc), "%d %%", (int)(clamp01(frac) * 100));
     draw_str(&font, x + 32, y + 30, what, C_TEXT);
-    draw_str(&font, x + cw - 32 - str_width(&font, pc), y + 30, pc, C_ACCENT);
+    if (!unknown) draw_str(&font, x + cw - 32 - str_width(&font, pc), y + 30, pc, C_ACCENT);
     int bw = cw - 64, by = y + 96;
     rrect(x + 32, by, bw, 8, 4, 0x21252C, 255);
-    int fw = (int)(bw * clamp01(frac));
-    if (fw > 0) {
-        rrect(x + 32, by, fw < 8 ? 8 : fw, 8, 4, C_ACCENT, 255);
-        if (fw > 24) rrect(x + 32 + fw - 16, by, 16, 8, 4, C_ACCENT_HI, 120);
+    if (unknown) {   // a segment of the track, brighter towards its head: working, no figure to give
+        int w2 = bw / 3;
+        rrect(x + 32, by, w2, 8, 4, C_ACCENT, 160);
+        rrect(x + 32 + w2 - 24, by, 24, 8, 4, C_ACCENT_HI, 230);
+    } else {
+        int fw = (int)(bw * clamp01(frac));
+        if (fw > 0) {
+            rrect(x + 32, by, fw < 8 ? 8 : fw, 8, 4, C_ACCENT, 255);
+            if (fw > 24) rrect(x + 32 + fw - 16, by, 16, 8, 4, C_ACCENT_HI, 120);
+        }
     }
     draw_str(&font_small, x + 32, by + 30, "Ornith-1.5  ·  Parakeet  ·  Chatterbox", C_TEXT_MUTED);
 }

@@ -25,6 +25,11 @@ Terminal-Bench 2.1, against 53.2 / 81.7 / 21.3 for Qwen3.5-9B on the same table 
 | `pc/ci_toolchain.py` | fetches the OpenOrbis PS4 toolchain, Zig and the OpenSSL 1.1 the package tool needs |
 | `.github/workflows/build.yml` | compile, convert and package as three jobs on GitHub Actions; publishes the package as a 4.9 GB artifact |
 | `.github/workflows/probe.yml` | cheap checks: what the GGUF holds, what the toolchain release holds |
+| `chat/ui.c` | the whole interface: theme, header, cards, markdown tables and code panels, keyboard, voice sheet, loading and error cards |
+| `pc/ui_preview.c` | the same screens rendered on a PC to a PNG (`chat/ui.c` only), so the look can be checked without the console |
+| `chat/api.c`, `chat/api_proto.c`, `chat/api_run.inc` | the OpenAI-compatible server: chat, completions, responses, models, SSE, the OpenAPI document |
+| `chat/imgen.c`, `chat/img.c`, `chat/png.c` | image models through the API: the backend's answer, a PNG reader (inflate) and a PNG writer, by hand |
+| `tests/api_proto_test.c`, `tests/api_run_test.c`, `tests/img_test.c` | the API's protocol, its jobs (with a mock engine) and the PNG reader, on a PC |
 | `chat/`, `shaders/`, `build_chat.py`, … | Garlic LLM itself, unchanged except for the model's name and the package's files |
 
 ## The conversion
@@ -177,6 +182,108 @@ speculative decoding report themselves unavailable instead of taking the context
 Only the app's own weight format (the `.bin` + `model.idx` this repository's converter makes) can be downloaded: the
 console does not convert GGUFs. Put such a pair in any public repository and it installs itself this way.
 
+## The interface
+
+The app is a studio, not a terminal: near-black backdrop (`0x0B0D11` to `0x060709`) with a faint 48-pixel grid and a
+mint glow behind the header, one accent colour (`0x6EE7A8`) for everything that is alive, and surfaces that step up
+in brightness instead of drawing boxes around everything (`0x101216`, `0x171A20`, hairlines at `0x22252C`).
+
+* **The header** carries the mark (a rounded square with a mint-to-teal border and the Ornith logo), the name —
+  "Station AI", white and mint — and chips on the right for the model, a `tok/s` figure while it writes, and the
+  context (`4.2k / 40k`, with a gradient meter that turns amber past 85 %).
+* **Answers are cards**, the full width of the column, with a role line ("Station AI", a mint dot) over the text and
+  the speed on the right. A question is a mint-tinted bubble on the right, as a chat should be. There are no avatars:
+  the eye finds the boundary from the surface alone.
+* **Markdown is part of the layout**: headings in the text face, lists with mint numbers, quotes on a rule, tables as
+  neutral grids (`0x15181E` header row, `0x0E1014` rows, hairline column rules) and code panels in `0x090B0E` with a
+  3-pixel accent strip down the left.
+* **Thinking** has its own panel — the reasoning's last lines, dimmed and fading at the top, with a progress bar and
+  the count — and a one-line note over the answer afterwards.
+* **The keyboard, the voice sheet, the loading and error screens** follow: keys as 64-pixel rounded surfaces with the
+  selected one in solid mint and ink text, the dictation as a bar of levels, and start-up as a 760-pixel card that says
+  what is loading, how far it is, and which three models this build has.
+
+The screens are drawn by `chat/ui.c` only, so they can be rendered on a PC, pixel for pixel, without the console:
+
+```sh
+gcc -D_WIN32 -O2 -I chat -o build/ui_preview pc/ui_preview.c chat/ui.c chat/png.c chat/img.c -lm
+build/ui_preview shot.png chat chat/assets            # empty, thinking, generating, loading, error, keyboard, voice,
+                                                      # picture, top
+```
+
+## The API
+
+The API is the way this app is mostly used, so it is an OpenAI-compatible server on the console itself: L3 on the chat
+screen turns it on, the header and the log say where it listens (`192.168.1.42:8080`), and every endpoint below is
+exactly what an OpenAI client already sends. L3 again turns it off.
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /v1/chat/completions` | the conversation in, the reply out; `"stream": true` sends `chat.completion.chunk` events and `data: [DONE]` |
+| `POST /v1/completions` | the same model with one `prompt` text, answered as a `text_completion` (older clients, `stream` too) |
+| `POST /v1/responses` | OpenAI's newer shape: `input` (a text or messages) and `instructions`, answered as a `response`, or streamed as `response.created` → `response.output_text.delta` → `response.output_text.done` → `response.completed` |
+| `POST /v1/images/generations` | a picture from the image backend this console is pointed at (below); the answer is the backend's own, unchanged |
+| `GET /v1/models`, `GET /v1/models/{id}` | the model this console has loaded |
+| `GET /health`, `GET /openapi.json` | liveness, and the whole surface as an OpenAPI 3 document |
+
+```sh
+IP=192.168.1.42        # what the app shows when the API comes on
+
+curl -N http://$IP:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{
+  "model": "Ornith-1.5-9B", "stream": true,
+  "messages": [{"role": "user", "content": "Explícame la atención multi-cabeza en dos frases."}]}'
+
+curl http://$IP:8080/v1/completions -H 'Content-Type: application/json' \
+  -d '{"prompt": "Un haiku sobre una PS4:", "max_tokens": 64}'
+
+curl http://$IP:8080/v1/responses -H 'Content-Type: application/json' \
+  -d '{"instructions": "Responde en una sola frase.", "input": "¿Qué es un transformer?"}'
+```
+
+A client that speaks OpenAI needs only the address — `base_url = "http://192.168.1.42:8080/v1"`, any API key value
+(unless a key is set, see below) — and the model name is whatever `GET /v1/models` answers.
+
+* **One request at a time.** The model is the console's GPU: a second request while one is being answered gets
+  `503` with `"code": "busy"`, and the chat on screen shows that a request is in flight.
+* **What a request may carry.** `temperature` 0 to 2 (default 0.7), `max_tokens`/`max_completion_tokens` 1 to 16384
+  (default 512), `seed` for a repeatable start, `n` = 1. There are no logprobs, tools, or image *inputs*: this is a
+  text model on a console. Messages may be a string or an array of `{"type": "text"}` parts; the text of a request is
+  capped at 15 kB (about 4k tokens of prompt), and the rest of the window is the reply.
+* **A key, if you want one.** Write it into `/data/garlic_api_key.txt`; from then on every request needs
+  `Authorization: Bearer <that key>`. Delete the file to have no key again. The API listens on the LAN only, and only
+  while it is on.
+* **CORS** is open (`Access-Control-Allow-Origin: *`, `OPTIONS` answered) so a browser page can talk to the console.
+
+### Images
+
+A PlayStation 4 cannot run a diffusion model of its own — the 4.6 GB of weights are the language model, and the GPU is
+already busy with it. So image models arrive the way every other tool uses them: through the API, with the drawing
+done by a backend on the same network or by a service, and the console as the model's front — it forwards the request,
+shows and keeps the picture, and hands the backend's answer back to the client untouched.
+
+Write the backend into `/data/station_images.json` (one object):
+
+```json
+{ "base_url": "http://192.168.1.10:8080/v1", "api_key": "", "model": "sdxl" }
+```
+
+* `base_url` is any OpenAI-compatible image server — Automatic1111's or ComfyUI's OpenAI shim, a local vLLM/LocalAI
+  box, or `https://api.openai.com/v1` with a key. A whole endpoint in `"url"` (`…/v1/images/generations`) works too,
+  and is what to use when the path is not the usual one.
+* `api_key` goes out as `Authorization: Bearer …`; leave it empty for a server on the LAN that wants none.
+* `model` is the backend's name for its model, so the client keeps asking for this console's model name if it likes.
+
+```sh
+curl http://$IP:8080/v1/images/generations -H 'Content-Type: application/json' \
+  -d '{"prompt": "un atardecer sobre las colinas, estilo acuarela", "size": "1024x1024"}'
+```
+
+What comes back is the backend's JSON (`data[0].b64_json` unless the client asked for `url`), and, when it is a
+base64 picture, the console decodes it — PNG, by hand: `chat/img.c` is its inflate and its unfiltering — saves it as
+`/data/station-ai/images/img-<n>.png`, and shows it in the conversation with the prompt under it. Remote `url`
+answers are passed through and not fetched. Without `/data/station_images.json` the endpoint answers `400` with the
+message that says how to write it, so a client is never left guessing.
+
 ## What the last run produced
 
 Run [44144634898](https://github.com/mobjakdebug/garlicornith/actions/runs/44144634898) (branch
@@ -216,6 +323,9 @@ lines `yes`, `=> the layout is the one the converter assumes` (`ci/last-run/2026
   suggests `top_p 0.95`, `top_k 20` and `presence_penalty 1.5` for general chat, which would need different kernels.
   Temperature is L2/R2, and 0.6–0.7 suits the model's coding recommendation.
 * **Think mode is off by default**, as upstream: R3 turns it on, and a thought is capped at 1024 tokens.
+* **Image models locally.** `/v1/images/generations` is answered by an image backend the console is pointed at
+  (`/data/station_images.json`); this build has no diffusion model to draw with on the GPU itself, and it reads PNG
+  (not JPEG) when it decodes an answer. There is no image *input* either: the model is text-only.
 
 ## Credits and licences
 

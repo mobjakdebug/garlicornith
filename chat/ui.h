@@ -29,7 +29,8 @@ typedef enum {
     S_SYSTEM_PROMPT, S_LOCAL_GPU, S_PY_RUN, S_PY_EXIT, S_PY_CLICK, S_PY_RCLICK, S_PY_MOVE, S_PY_KEYS, S_PY_BACK,
     S_PY_AGAIN, S_PY_FIX, S_PY_DONE, S_PY_ERROR, S_PY_STOPPED, S_PY_STARTING, S_PY_FIX_MSG, S_PY_FIX_ASK, S_PY_INPUT, S_VOICE_MODE, S_THINKING, S_LISTENING_SHORT, S_VOICE_LOADING, S_VOICE_NO_TTS,
     S_THINK_OFF_HINT, S_THINK_ON_HINT, S_THINK_ON_TOAST, S_THINK_OFF_TOAST, S_THOUGHT, S_THINK_CUT, S_THINK_CHIP,
-    S_API_ON, S_API_OFF, S_API_FAILED, S_API_BUSY, S_API_DONE, N_STRINGS
+    S_API_ON, S_API_OFF, S_API_FAILED, S_API_BUSY, S_API_DONE, S_IMG_WAIT, S_IMG_SAVED, S_PY_IMAGE,
+    N_STRINGS
 } StrId;
 const char* tr(StrId id);
 
@@ -39,7 +40,7 @@ extern const char* ui_error;
 
 // ---- the conversation ----
 typedef struct Layout Layout;
-enum { MSG_AI, MSG_USER, MSG_NOTE };
+enum { MSG_AI, MSG_USER, MSG_NOTE, MSG_IMG };   // MSG_IMG: a picture (ui_image_add) with its prompt under it
 typedef struct {
     int who;
     char* text;
@@ -48,7 +49,10 @@ typedef struct {
     int think_n;      // the reply was thought first, this many tokens for think_s seconds (think_cut: up to the
     float think_s;    // cap); a short line over the answer says so. 0 = no reasoning.
     int think_cut;
+    int img;          // MSG_IMG: its slot in the pictures ui_image_add keeps
 } Msg;
+
+#include "img.h"
 
 #define MAX_MSGS 200
 extern Msg msgs[MAX_MSGS];
@@ -56,6 +60,10 @@ extern int n_msgs;
 Msg* msg_new(int who);
 void msg_append(Msg* m, const char* s, size_t n);
 void msgs_clear(void);
+
+// A picture in the conversation (what the API's image endpoint got, imgen.c): scaled to fit a card, over its prompt.
+// The file it was saved to is named on the card. Returns the message, or NULL if there was no memory for it.
+Msg* ui_image_add(const Img* full, const char* prompt, const char* path);
 
 typedef struct {
     const char* model;      // "Qwen3.5-9B"
@@ -90,6 +98,7 @@ void ui_backdrop_draw(void);
 uint32_t* ui_screen_buf(void);
 int ui_screen_pool_mb(void);
 void ui_free_caches(void);      // gives back the backdrop and keyboard copies (8 MB each); they return when needed
+// frac < 0: no figure and no percentage — the work has no steps to count (waiting for an image backend, say).
 void draw_loading(float frac, const char* what);
 void draw_error(const char* what);
 void draw_toast(const char* text, float alpha, int bottom);   // bottom 0 = above the footer

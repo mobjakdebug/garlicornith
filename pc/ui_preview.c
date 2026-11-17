@@ -139,6 +139,30 @@ int main(int argc, char** argv) {
         float levels[24];
         for (int i = 0; i < 24; i++) levels[i] = 0.2f + 0.8f * (float)((i * 37) % 11) / 11.0f;
         draw_voice(VOICE_RECORDING, levels, 24, 1.8, 30.0, 1.8);
+    } else if (!strcmp(screen, "picture")) {
+        demo_messages();
+        // a stand-in for what an image backend draws: sky, sun, hills
+        enum { W = 640, H = 400 };
+        static uint8_t rgb[W * H * 3];
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) {
+                float t = (float)y / H;
+                int r = (int)(28 + 150 * t * t), g = (int)(22 + 96 * t), b = (int)(46 + 70 * t);
+                float dx = (float)(x - W * 0.72f), dy = (float)(y - H * 0.24f);
+                float d = sqrtf(dx * dx + dy * dy);
+                if (d < 54) {   // the sun, with a soft edge
+                    float k = d < 44 ? 1.0f : (54 - d) / 10.0f;
+                    r = (int)(r + (255 - r) * k), g = (int)(g + (232 - g) * k), b = (int)(b + (170 - b) * k);
+                }
+                float h1 = H * 0.74f + 26 * sinf((float)x / 90.0f), h2 = H * 0.84f + 18 * sinf((float)x / 140.0f + 2);
+                if (y > h2) r = 22, g = 30, b = 34;
+                else if (y > h1) r = 34, g = 48, b = 46;
+                uint8_t* p = rgb + ((size_t)y * W + x) * 3;
+                p[0] = (uint8_t)r, p[1] = (uint8_t)g, p[2] = (uint8_t)b;
+            }
+        Img im = {W, H, rgb};
+        ui_image_add(&im, "Un atardecer sobre las colinas, con el sol bajo y el cielo en degradado.", "/data/station-ai/images/img-3.png");
+        draw_chat(&v);
     } else if (!strcmp(screen, "top")) {
         demo_messages();
         v.scroll = 100000;   // (clamped to the oldest message)

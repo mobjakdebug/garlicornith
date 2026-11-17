@@ -29,6 +29,7 @@
 #define DL_MAX_FILES 24
 #define DL_MAX_TEXT (16 << 20)              // a file list that is bigger than this is not a file list
 #define DL_CHUNK (64 << 10)
+#define DL_MAX_JSON (48 << 20)              // an image backend's answer: a picture, base64, is a few megabytes
 
 typedef struct {
     char path[160];      // as the repository has it (a .bin or an .idx)
@@ -308,6 +309,90 @@ static char* http_text(const char* url, size_t* len, int* err) {
     if (!buf) return NULL;
     buf[n] = 0;
     *len = n;
+    return buf;
+}
+
+// ---- a POST, for the image backend (imgen.c) -----------------------------------------------------------------
+// The same client the downloads use, with a body: a JSON request goes out, the answer (a generation's JSON, or one
+// picture's) comes back whole. Redirects are followed only where the method is kept (307, 308).
+
+char* dl_http_post(const char* url0, const char* auth, const char* body, size_t blen, size_t* out_len, int* status) {
+    *out_len = 0, *status = 0;
+    if (net_up()) {
+        *status = -1;
+        return NULL;
+    }
+    char url[700];
+    snprintf(url, sizeof(url), "%s", url0);
+    int32_t req = -1, conn = -1;
+    int st = 0;
+    for (int hop = 0; hop < 4; hop++) {
+        conn = sceHttpCreateConnectionWithURL(tpl, url, 1);
+        if (conn < 0) {
+            say("dl: POST %.200s: connection 0x%08X", url, (unsigned)conn);
+            *status = -1;
+            return NULL;
+        }
+        req = sceHttpCreateRequestWithURL(conn, ORBIS_METHOD_POST, url, (uint64_t)blen);
+        if (req < 0) {
+            sceHttpDeleteConnection(conn);
+            *status = -1;
+            return NULL;
+        }
+        sceHttpAddRequestHeader(req, "Content-Type", "application/json", 0);
+        if (auth && auth[0]) sceHttpAddRequestHeader(req, "Authorization", auth, 0);
+        int r = sceHttpSendRequest(req, body, blen);
+        if (r >= 0) r = sceHttpGetStatusCode(req, &st);
+        if (r < 0) {
+            say("dl: POST %.200s -> 0x%08X", url, (unsigned)r);
+            sceHttpDeleteRequest(req);
+            sceHttpDeleteConnection(conn);
+            *status = -1;
+            return NULL;
+        }
+        if (st == 307 || st == 308) {
+            char* hdr = NULL;
+            size_t hn = 0;
+            char next[700];
+            int ok = sceHttpGetAllResponseHeaders(req, &hdr, &hn) >= 0 && hdr && dl_location(hdr, hn, url, next, sizeof(next));
+            sceHttpDeleteRequest(req);
+            sceHttpDeleteConnection(conn);
+            if (!ok) {
+                *status = st;
+                return NULL;
+            }
+            snprintf(url, sizeof(url), "%s", next);
+            continue;
+        }
+        break;
+    }
+    *status = st;
+    size_t cap = 1 << 16, n = 0;
+    char* buf = malloc(cap);
+    while (buf) {
+        if (n + DL_CHUNK + 1 > cap) {
+            if (cap >= DL_MAX_JSON) break;
+            char* nb = realloc(buf, cap * 2);
+            if (!nb) break;
+            buf = nb;
+            cap *= 2;
+        }
+        int r = sceHttpReadData(req, buf + n, DL_CHUNK);
+        if (r < 0) {
+            free(buf);
+            buf = NULL;
+            break;
+        }
+        if (r == 0) break;
+        n += (size_t)r;
+    }
+    sceHttpDeleteRequest(req);
+    if (!buf) {
+        *status = -1;
+        return NULL;
+    }
+    buf[n] = 0;
+    *out_len = n;
     return buf;
 }
 

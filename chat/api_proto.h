@@ -69,6 +69,15 @@ void api_json_completion(Sb* out, const char* id, const char* model, long long c
 // One chat.completion.chunk (streaming). role != NULL: the first chunk, with the role. text may be empty.
 void api_json_chunk(Sb* out, const char* id, const char* model, long long created, const char* role, const char* text,
                     size_t tlen, const char* finish);
+// The same for the older /v1/completions: a text_completion, whole or one chunk of one.
+void api_json_text_completion(Sb* out, const char* id, const char* model, long long created, const char* text,
+                              size_t tlen, const char* finish, int prompt_tokens, int completion_tokens);
+void api_json_text_chunk(Sb* out, const char* id, const char* model, long long created, const char* text, size_t tlen,
+                         const char* finish);
+// /v1/responses: the response object, and one of its server-sent events ("response.output_text.delta", …).
+void api_json_response(Sb* out, const char* id, const char* model, long long created, const char* text, size_t tlen,
+                       const char* status, int input_tokens, int output_tokens);
+void api_json_response_event(Sb* out, const char* type, const char* response_id, const char* text, size_t tlen);
 // The error object: {"error": {"message", "type", "code"}}.
 void api_json_error(Sb* out, const char* message, const char* type, const char* code);
 
@@ -78,6 +87,8 @@ typedef struct {
     int root;                   // root node (in the pool the caller gives)
     int messages;               // the messages array node (-1 if missing)
     int n_messages;
+    int prompt;                 // a single text (a prompt node, -1 if none): one user turn
+    int instructions;           // a system text in front of it (a node, -1 if none)
     double temperature;         // default 0.7
     int max_tokens;             // default 512
     int stream;                 // 0 or 1
@@ -88,5 +99,11 @@ typedef struct {
 // Reads a chat.completions body. Returns 0 if valid (fills req; messages are pool nodes, each an object with role
 // and content), or -1 with the reason in err (a fixed string, for the 400 answer).
 int api_chat_parse(const char* body, size_t len, JNode* pool, int max, ChatRequest* req, const char** err);
+
+// Reads a /v1/completions body (responses = 0: "prompt") or a /v1/responses one (responses = 1: "input", which may
+// be a string or an array of messages, plus "instructions"). Fills req the same way; the prompt is a single text
+// (req.prompt) or a messages array (req.messages). 0 = ok, -1 with the reason in err.
+int api_text_parse(const char* body, size_t len, JNode* pool, int max, ChatRequest* req, int responses,
+                   const char** err);
 
 #endif
