@@ -155,33 +155,46 @@ int main(int argc, char** argv) {
             pv.rows[0] = (PanelRow){S_P_ENABLED, "", PANEL_SWITCH, 1};
             pv.rows[1] = (PanelRow){S_P_ADDRESS, "192.168.1.42:8080", PANEL_VALUE, 0};
             pv.rows[2] = (PanelRow){S_P_PORT, "8080", PANEL_STEP, 0};
-            pv.rows[3] = (PanelRow){S_P_KEY, "guardada", PANEL_ACTION, 0};
+            pv.rows[3] = (PanelRow){S_P_KEY, "\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2",
+                                    PANEL_ACTION, 0};
             pv.rows[4] = (PanelRow){S_P_REQUESTS, "37", PANEL_VALUE, 0};
             pv.n_rows = 5;
             pv.status = "POST /v1/chat/completions · /v1/completions · /v1/responses · /v1/images/generations";
+            pv.tip[0] = "curl http://192.168.1.42:8080/v1/chat/completions \\";
+            pv.tip[1] = "  -H 'Content-Type: application/json' \\";
+            pv.tip[2] = "  -d '{\"model\": \"Ornith-1.5-9B\", \"messages\": []}'";
         } else if (pv.tab == 1) {
             pv.rows[0] = (PanelRow){S_P_BACKEND, "http://192.168.1.10:8080/v1", PANEL_VALUE, 0};
             pv.rows[1] = (PanelRow){S_MODEL_LABEL, "sdxl", PANEL_STEP, 0};
-            pv.rows[2] = (PanelRow){S_P_KEY, "sin clave", PANEL_ACTION, 0};
+            pv.rows[2] = (PanelRow){S_P_KEY, "not set", PANEL_ACTION, 0};
             pv.rows[3] = (PanelRow){S_P_SAVED, "/data/station-ai/images", PANEL_VALUE, 0};
             pv.rows[4] = (PanelRow){S_P_CLEAR, "", PANEL_ACTION, 0};
             pv.n_rows = 5;
-            pv.status = "Las imágenes que llegan se guardan y se muestran en la conversación.";
+            pv.status = "/data/station_images.json";
+            pv.tip[0] = "{ \"base_url\": \"http://<image server>:8000/v1\",";
+            pv.tip[1] = "  \"api_key\": \"…\", \"model\": \"sdxl-turbo\" }";
+            pv.tip[2] = "tools > images > generate  \xe2\x86\x92  saved, shown in chat";
         } else if (pv.tab == 2) {
             pv.rows[0] = (PanelRow){S_P_ENGINE, "Ornith-1.5-9B", PANEL_VALUE, 0};
             pv.rows[1] = (PanelRow){S_TEMPERATURE, "0.70", PANEL_STEP, 0};
-            pv.rows[2] = (PanelRow){S_THINK_ON_HINT, "", PANEL_SWITCH, 0};
+            pv.rows[2] = (PanelRow){S_P_THINKING, "", PANEL_SWITCH, 1};
             pv.rows[3] = (PanelRow){S_P_THINK_CAP, "1024", PANEL_STEP, 0};
-            pv.rows[4] = (PanelRow){S_CONTEXT, "4.2k / 40k", PANEL_VALUE, 0};
-            pv.rows[5] = (PanelRow){S_VOICE_MODE, "lista", PANEL_VALUE, 0};
+            pv.rows[4] = (PanelRow){S_P_CONTEXT, "4.2k / 40k", PANEL_VALUE, 0};
+            pv.rows[5] = (PanelRow){S_VOICE_MODE, "ready", PANEL_VALUE, 0};
             pv.n_rows = 6;
-            pv.status = "L2 y R2 cambian el valor; ✕ enciende y apaga.";
+            pv.status = "L2 / R2 change the value; \xe2\x9c\x95 turns it on and off.";
+            pv.tip[0] = "temperature  0 = steady, 1.5 = wild";
+            pv.tip[1] = "cap          reasoning tokens one reply may spend";
+            pv.tip[2] = "thinking     saved in /data/garlic_think.txt";
         } else if (pv.tab == 3) {
             pv.rows[0] = (PanelRow){S_P_LANGUAGE, "English", PANEL_STEP, 0};
             pv.rows[1] = (PanelRow){S_P_DOWNLOAD, "", PANEL_ACTION, 0};
             pv.rows[2] = (PanelRow){S_P_CLEAR_CHAT, "", PANEL_ACTION, 0};
             pv.n_rows = 3;
-            pv.status = "El idioma se guarda y vuelve en el próximo arranque.";
+            pv.status = "/data/station_lang.txt";
+            pv.tip[0] = "/data/garlic_api_port.txt   the port the API listens on";
+            pv.tip[1] = "/data/garlic_api_key.txt    the key, if one is set";
+            pv.tip[2] = "/data/garlic_think.txt      thinking, and its cap";
         } else {
             pv.rows[0] = (PanelRow){S_P_VERSION, "1.22", PANEL_VALUE, 0};
             pv.rows[1] = (PanelRow){S_P_ENGINE, "Ornith-1.5-9B · q4s", PANEL_VALUE, 0};
@@ -189,7 +202,9 @@ int main(int argc, char** argv) {
             pv.rows[3] = (PanelRow){S_P_MEM, "1 812 MiB", PANEL_VALUE, 0};
             pv.rows[4] = (PanelRow){S_P_REQUESTS, "37", PANEL_VALUE, 0};
             pv.n_rows = 5;
-            pv.status = "Station AI · 100 % local · sin internet";
+            pv.tip[0] = "Station AI \xc2\xb7 1.22";
+            pv.tip[1] = "github.com/mobjakdebug/garlicornith";
+            pv.tip[2] = "PS4 payload \xc2\xb7 100% local";
         }
         draw_panel(&pv);
     } else if (!strcmp(screen, "picture")) {

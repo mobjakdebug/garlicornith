@@ -136,7 +136,7 @@ static const char* strings[N_STRINGS][N_LANGS] = {
     [S_P_KEY] = {"Clave", "Key", "Chave", "Ключ"},
     [S_P_NO_KEY] = {"sin clave", "none", "sem chave", "без ключа"},
     [S_P_SET] = {"Poner una clave", "Set a key", "Definir uma chave", "Задать ключ"},
-    [S_P_CLEAR] = {"Quitarla", "Remove it", "Remover", "Убрать"},
+    [S_P_CLEAR] = {"Borrar las imágenes", "Clear the images", "Apagar as imagens", "Удалить картинки"},
     [S_P_REQUESTS] = {"Solicitudes", "Requests", "Requisições", "Запросы"},
     [S_P_BACKEND] = {"Servidor de imágenes", "Image backend", "Servidor de imagens", "Сервер картинок"},
     [S_P_FOLDER] = {"Carpeta", "Folder", "Pasta", "Папка"},
@@ -212,6 +212,8 @@ static const char* strings[N_STRINGS][N_LANGS] = {
         "целиком в одном блоке ```python."},
     [S_PY_INPUT] = {"Responde al programa…", "Answer the program…", "Responda ao programa…", "Ответьте программе…"},
     [S_VOICE_MODE] = {"Modo voz", "Voice mode", "Modo voz", "Голосовой режим"},
+    [S_P_THINKING] = {"Razonamiento", "Thinking", "Raciocínio", "Размышления"},
+    [S_P_CONTEXT] = {"Contexto", "Context", "Contexto", "Контекст"},
     [S_THINKING] = {"Pensando…", "Thinking…", "Pensando…", "Думаю…"},
     [S_LISTENING_SHORT] = {"Te escucho…", "Listening…", "Estou ouvindo…", "Слушаю…"},
     [S_VOICE_LOADING] = {"Preparando la voz…", "Getting the voice ready…", "Preparando a voz…", "Готовлю голос…"},
@@ -2309,6 +2311,16 @@ void draw_panel(const PanelView* pv) {
     if (pv->status && pv->status[0]) {
         fill(cx, ry, cw, 1, C_LINE);
         draw_str(&font_small, cx, ry + 30, pv->status, C_TEXT_MUTED);
+    }
+    // the card at the bottom: the command or the file, as it would be typed (nothing to guess at)
+    int ny = ry + 66;
+    if (pv->tip[0] && ny + 150 < SCREEN_H - FOOTER_H) {
+        rrect(cx - 26, ny, cw + 52, 136, 16, C_CODE, 255);
+        rrect_line(cx - 26, ny, cw + 52, 136, 16, 1, C_LINE, 255);
+        rrect(cx - 26, ny + 20, 3, 96, 2, C_ACCENT, 150);
+        for (int i = 0; i < 3; i++)
+            if (pv->tip[i] && pv->tip[i][0])
+                draw_str(&mono, cx + 8, ny + 26 + i * 34, pv->tip[i], i ? C_TEXT_DIM : C_TEXT);
     }
 
     static const Hint hints[] = {{BTN_UPDOWN, S_P_MOVE}, {BTN_L1, S_P_SECTION}, {BTN_CROSS, S_P_OPEN},

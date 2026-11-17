@@ -34,6 +34,7 @@ typedef enum {
     S_P_ADDRESS, S_P_PORT, S_P_KEY, S_P_NO_KEY, S_P_SET, S_P_CLEAR, S_P_REQUESTS, S_P_BACKEND, S_P_FOLDER,
     S_P_THINK_CAP, S_P_LANGUAGE, S_P_DOWNLOAD, S_P_CLEAR_CHAT, S_P_VERSION, S_P_SECTION, S_P_CHANGE, S_P_OPEN,
     S_P_BACK, S_P_NOTHING, S_P_SAVED, S_P_ENGINE, S_P_MOVE, S_P_MEM, S_P_KERNELS, S_P_ABOUT, S_MODEL_LABEL,
+    S_P_THINKING, S_P_CONTEXT,
     N_STRINGS
 } StrId;
 const char* tr(StrId id);
@@ -125,6 +126,7 @@ typedef struct {
     int n_rows;
     PanelRow rows[PANEL_ROWS];
     const char* status;             // one line under the rows (an address, a note)
+    const char* tip[3];             // a card at the bottom: the exact command or file this section is about
     int api_on;                     // the chip in the header
     const char* api_addr;
 } PanelView;

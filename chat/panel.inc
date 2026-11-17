@@ -126,6 +126,11 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         snprintf(v, sizeof(v), "%u", api_requests());
         panel_row(pv, S_P_REQUESTS, v, PANEL_VALUE, 0);
         pv->status = "POST /v1/chat/completions · /v1/completions · /v1/responses · /v1/images/generations";
+        static char curl[160];
+        snprintf(curl, sizeof(curl), "curl http://%s/v1/chat/completions \\", api_address());
+        pv->tip[0] = curl;
+        pv->tip[1] = "  -H 'Content-Type: application/json' \\";
+        pv->tip[2] = "  -d '{\"model\": \"" MODEL_NAME "\", \"messages\": []}'";
     } else if (tab == 1) {
         static PanelImg img;
         panel_img_read(&img);
@@ -135,22 +140,31 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         panel_row(pv, S_P_SAVED, "/data/station-ai/images", PANEL_VALUE, 0);
         panel_row(pv, S_P_CLEAR, "", PANEL_ACTION, 0);
         pv->status = PANEL_IMAGES_FILE;
+        pv->tip[0] = "{ \"base_url\": \"http://<image server>:8000/v1\",";
+        pv->tip[1] = "  \"api_key\": \"…\", \"model\": \"sdxl-turbo\" }";
+        pv->tip[2] = "tools > images > generate  →  saved, shown in chat";
     } else if (tab == 2) {
         panel_row(pv, S_P_ENGINE, MODEL_NAME, PANEL_VALUE, 0);
         snprintf(v, sizeof(v), "%.2f", view.temperature);
         panel_row(pv, S_TEMPERATURE, v, PANEL_STEP, 0);
-        panel_row(pv, S_THINK_ON_HINT, "", PANEL_SWITCH, think_on);
+        panel_row(pv, S_P_THINKING, "", PANEL_SWITCH, think_on);
         snprintf(v, sizeof(v), "%d", think_cap);
         panel_row(pv, S_P_THINK_CAP, v, PANEL_STEP, 0);
         snprintf(v, sizeof(v), "%d / %d", pos, (int)eng.ctx_limit);
-        panel_row(pv, S_CONTEXT, v, PANEL_VALUE, 0);
+        panel_row(pv, S_P_CONTEXT, v, PANEL_VALUE, 0);
         panel_row(pv, S_VOICE_MODE, tts_ready ? tr(S_P_ON) : tr(S_P_OFF), PANEL_VALUE, 0);
         pv->status = tr(S_P_CHANGE);
+        pv->tip[0] = "temperature  0 = steady, 1.5 = wild";
+        pv->tip[1] = "cap          reasoning tokens one reply may spend";
+        pv->tip[2] = "thinking     saved in /data/garlic_think.txt";
     } else if (tab == 3) {
         panel_row(pv, S_P_LANGUAGE, panel_lang_name(ui_lang), PANEL_STEP, 0);
         panel_row(pv, S_P_DOWNLOAD, "", PANEL_ACTION, 0);
         panel_row(pv, S_P_CLEAR_CHAT, "", PANEL_ACTION, 0);
         pv->status = PANEL_LANG_FILE;
+        pv->tip[0] = "/data/garlic_api_port.txt   the port the API listens on";
+        pv->tip[1] = "/data/garlic_api_key.txt    the key, if one is set";
+        pv->tip[2] = "/data/garlic_think.txt      thinking, and its cap";
     } else {
         panel_row(pv, S_P_VERSION, "1.22", PANEL_VALUE, 0);
         snprintf(v, sizeof(v), "%s · %d tokens", MODEL_NAME, (int)eng.ctx_limit);
@@ -161,7 +175,9 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         panel_row(pv, S_P_MEM, v, PANEL_VALUE, 0);
         snprintf(v, sizeof(v), "%u", api_requests());
         panel_row(pv, S_P_REQUESTS, v, PANEL_VALUE, 0);
-        pv->status = tr(S_OFFLINE);
+        pv->tip[0] = "Station AI \xc2\xb7 1.22";
+        pv->tip[1] = "github.com/mobjakdebug/garlicornith";
+        pv->tip[2] = "PS4 payload \xc2\xb7 100% local";
     }
     pv->n_rows = pv->n_rows ? pv->n_rows : 1;   // (never zero: the cursor has somewhere to be)
     pv->sel = sel >= pv->n_rows ? pv->n_rows - 1 : sel < 0 ? 0 : sel;
