@@ -1936,6 +1936,7 @@ static void api_chat_end(void) {
 }
 
 #include "api_run.inc"   // the OpenAI-compatible API's jobs on the model (api.c serves the requests)
+#include "panel.inc"     // the control panel: everything the app can be told to do, in one place
 
 int main(void) {
     if (rename(LOG_FILE, LOG_PREV)) unlink(LOG_FILE);   // the last log of this app is kept, as LOG_PREV
@@ -1950,6 +1951,13 @@ int main(void) {
     int lang = 1;
     sceSystemServiceParamGetInt(ORBIS_SYSTEM_SERVICE_PARAM_ID_LANG, &lang);
     ui_lang = lang_from_system(lang);
+    size_t ln = 0;
+    char* lf = (char*)read_all(PANEL_LANG_FILE, &ln);   // (the panel's choice wins over the console's language)
+    if (lf && ln) {
+        int l = atoi(lf);
+        if (l >= 0 && l < N_LANGS) ui_lang = l;
+    }
+    free(lf);
     say("user %d, pad %d, system language %d -> ui %d", user_id, g_pad, lang, ui_lang);
     int vr = video_init();
     if (vr) {
@@ -2025,13 +2033,15 @@ int main(void) {
         if (generating) {
             if (pressed & ORBIS_PAD_BUTTON_CIRCLE) finish_turn(0);
             else generate_one();
-        } else if (pressed & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_OPTIONS)) {
+        } else if (pressed & ORBIS_PAD_BUTTON_CROSS) {
             static char text[2048];
-            int cross = (pressed & ORBIS_PAD_BUTTON_CROSS) != 0;
-            if (cross ? keyboard(text, 1500, 0) : ask_user(text, sizeof(text))) {
+            if (keyboard(text, 1500, 0)) {
                 say("user wrote %d bytes", (int)strlen(text));
                 start_turn(text);
             }
+            prev = read_buttons();
+        } else if (pressed & ORBIS_PAD_BUTTON_OPTIONS) {
+            panel_mode();   // the control panel (panel.inc): API, image backend, model, system
             prev = read_buttons();
         } else if (pressed & ORBIS_PAD_BUTTON_L1) {
             voice_mode();

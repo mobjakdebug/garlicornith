@@ -30,6 +30,10 @@ typedef enum {
     S_PY_AGAIN, S_PY_FIX, S_PY_DONE, S_PY_ERROR, S_PY_STOPPED, S_PY_STARTING, S_PY_FIX_MSG, S_PY_FIX_ASK, S_PY_INPUT, S_VOICE_MODE, S_THINKING, S_LISTENING_SHORT, S_VOICE_LOADING, S_VOICE_NO_TTS,
     S_THINK_OFF_HINT, S_THINK_ON_HINT, S_THINK_ON_TOAST, S_THINK_OFF_TOAST, S_THOUGHT, S_THINK_CUT, S_THINK_CHIP,
     S_API_ON, S_API_OFF, S_API_FAILED, S_API_BUSY, S_API_DONE, S_IMG_WAIT, S_PY_IMAGE,
+    S_PANEL, S_P_TAB_API, S_P_TAB_IMAGES, S_P_TAB_MODEL, S_P_TAB_SYSTEM, S_P_ON, S_P_OFF, S_P_ENABLED,
+    S_P_ADDRESS, S_P_PORT, S_P_KEY, S_P_NO_KEY, S_P_SET, S_P_CLEAR, S_P_REQUESTS, S_P_BACKEND, S_P_FOLDER,
+    S_P_THINK_CAP, S_P_LANGUAGE, S_P_DOWNLOAD, S_P_CLEAR_CHAT, S_P_VERSION, S_P_SECTION, S_P_CHANGE, S_P_OPEN,
+    S_P_BACK, S_P_NOTHING, S_P_SAVED, S_P_ENGINE, S_P_MOVE, S_P_MEM, S_P_KERNELS, S_P_ABOUT, S_MODEL_LABEL,
     N_STRINGS
 } StrId;
 const char* tr(StrId id);
@@ -100,6 +104,31 @@ int ui_screen_pool_mb(void);
 void ui_free_caches(void);      // gives back the backdrop and keyboard copies (8 MB each); they return when needed
 // frac < 0: no figure and no percentage — the work has no steps to count (waiting for an image backend, say).
 void draw_loading(float frac, const char* what);
+
+// ---- the control panel (drawn here, driven by panel.inc in main.c) --------------------------------------------
+// Everything the app can be told to do, in one place: the API, the image backend, the model and the system. A tab
+// on the left, rows on the right: a switch, a value, an action or a number to step.
+enum { PANEL_SWITCH, PANEL_VALUE, PANEL_ACTION, PANEL_STEP };
+typedef struct {
+    StrId label;
+    char value[80];         // what the row shows on the right
+    int kind;
+    int on;                 // PANEL_SWITCH: drawn as a switch in this state
+} PanelRow;
+
+#define PANEL_TABS 5
+#define PANEL_ROWS 9
+typedef struct {
+    StrId tabs[PANEL_TABS];         // API, Images, Model, System, About
+    int n_tabs, tab;
+    int sel;                        // the row under the cursor
+    int n_rows;
+    PanelRow rows[PANEL_ROWS];
+    const char* status;             // one line under the rows (an address, a note)
+    int api_on;                     // the chip in the header
+    const char* api_addr;
+} PanelView;
+void draw_panel(const PanelView* pv);
 void draw_error(const char* what);
 void draw_toast(const char* text, float alpha, int bottom);   // bottom 0 = above the footer
 

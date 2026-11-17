@@ -36,6 +36,9 @@ typedef struct {                // the BSD sockaddr_in: 16 bytes, the same size 
 } ApiSockaddrIn;
 _Static_assert(sizeof(ApiSockaddrIn) == sizeof(OrbisNetSockaddr), "sockaddr size");
 
+static int port = API_PORT;     // (api_port: the panel may change it)
+static unsigned requests;       // answered requests, for the panel
+
 static OrbisPthreadMutex api_mu;
 static ApiJob* queued;          // waiting for the main loop
 static int busy;                // a chat job is queued or running (api_done clears it)
@@ -174,6 +177,7 @@ static void serve_job(int fd, HttpRequest* req, ApiKind kind) {
     if (!full) {
         busy = 1;
         queued = job;
+        requests++;
     }
     scePthreadMutexUnlock(&api_mu);
     if (full) {
@@ -298,6 +302,14 @@ static int api_setup(void) {
         return -1;
     }
     scePthreadMutexInit(&api_mu, NULL, "garlic_api");
+    // the port the panel chose last time, if it was written
+    size_t pn = 0;
+    uint8_t* pd = read_all(API_PORT_FILE, &pn);
+    if (pd) {
+        int v = atoi((const char*)pd);
+        if (v >= 1024 && v <= 65535) port = v;
+        free(pd);
+    }
     size_t n = 0;
     uint8_t* kd = read_all(API_KEY_FILE, &n);
     if (kd) {
@@ -315,7 +327,7 @@ static int api_setup(void) {
     return 0;
 }
 
-// A socket listening on API_PORT, on any of the console's addresses; -1 if it cannot (logged).
+// A socket listening on port, on any of the console's addresses; -1 if it cannot (logged).
 static OrbisNetId api_listen(void) {
     OrbisNetId s = sceNetSocket("garlic_api", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_STREAM, API_IPPROTO_TCP);
     if (s < 0) {
@@ -328,10 +340,10 @@ static OrbisNetId api_listen(void) {
     memset(&a, 0, sizeof(a));
     a.len = sizeof(a);
     a.family = ORBIS_NET_AF_INET;
-    a.port = sceNetHtons(API_PORT);
+    a.port = sceNetHtons((uint16_t)port);
     a.addr = 0;   // any address
     if (sceNetBind(s, (const OrbisNetSockaddr*)&a, sizeof(a)) || sceNetListen(s, 4)) {
-        say("api: cannot listen on port %d; the API stays off", API_PORT);
+        say("api: cannot listen on port %d; the API stays off", port);
         sceNetSocketClose(s);
         return -1;
     }
@@ -342,7 +354,7 @@ static OrbisNetId api_listen(void) {
 // network. Connecting a UDP socket only makes the system choose that address; nothing is sent. Without a network
 // the address stays ":8080".
 static void find_address(void) {
-    snprintf(address, sizeof(address), ":%d", API_PORT);
+    snprintf(address, sizeof(address), ":%d", port);
     OrbisNetId s = sceNetSocket("garlic_api_addr", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_DGRAM, API_IPPROTO_UDP);
     if (s < 0) return;
     static const uint8_t far[4] = {192, 0, 2, 1};   // (an address reserved for documentation: never a real host)
@@ -356,12 +368,47 @@ static void find_address(void) {
     if (sceNetConnect(s, (const OrbisNetSockaddr*)&a, sizeof(a)) == 0 &&
         sceNetGetsockname(s, (OrbisNetSockaddr*)&a, &len) == 0 && a.addr) {
         const uint8_t* b = (const uint8_t*)&a.addr;   // (network byte order: the bytes as they are written)
-        snprintf(address, sizeof(address), "%u.%u.%u.%u:%d", b[0], b[1], b[2], b[3], API_PORT);
+        snprintf(address, sizeof(address), "%u.%u.%u.%u:%d", b[0], b[1], b[2], b[3], port);
     }
     sceNetSocketClose(s);
 }
 
 int api_enabled(void) { return on; }
+int api_port(void) { return port; }
+unsigned api_requests(void) { return requests; }
+
+void api_reload_key(void) {
+    scePthreadMutexLock(&api_mu);
+    free(key);
+    key = NULL;
+    size_t n = 0;
+    uint8_t* kd = read_all(API_KEY_FILE, &n);
+    if (kd) {
+        while (n && (kd[n - 1] == '\n' || kd[n - 1] == '\r' || kd[n - 1] == ' ')) n--;
+        if (n) {
+            key = malloc(n + 1);
+            if (key) memcpy(key, kd, n), key[n] = 0;
+        }
+        free(kd);
+    }
+    scePthreadMutexUnlock(&api_mu);
+    say("api: key %s", key ? "set" : "off");
+}
+
+// A port another program has taken, or the port the panel wants: off, then on again on the new one.
+void api_set_port(int p) {
+    if (p < 1024 || p > 65535 || p == port) return;
+    int was = on;
+    if (was) api_enable(0);
+    port = p;
+    FILE* f = fopen(API_PORT_FILE, "w");
+    if (f) {
+        fprintf(f, "%d\n", port);
+        fclose(f);
+    }
+    say("api: port %d", port);
+    if (was) api_enable(1);
+}
 
 const char* api_address(void) { return address; }
 

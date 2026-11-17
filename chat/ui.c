@@ -123,6 +123,41 @@ static const char* strings[N_STRINGS][N_LANGS] = {
     [S_OFFLINE] = {"100 % sin conexión", "100% offline", "100% offline", "100% офлайн"},
     [S_IMG_WAIT] = {"Pidiendo una imagen…", "Asking for a picture…", "Pedindo uma imagem…", "Запрашиваю картинку…"},
     [S_PY_IMAGE] = {"Imagen", "Image", "Imagem", "Картинка"},
+    [S_PANEL] = {"Panel", "Panel", "Painel", "Панель"},
+    [S_P_TAB_API] = {"API", "API", "API", "API"},
+    [S_P_TAB_IMAGES] = {"Imágenes", "Images", "Imagens", "Изображения"},
+    [S_P_TAB_MODEL] = {"Modelo", "Model", "Modelo", "Модель"},
+    [S_P_TAB_SYSTEM] = {"Sistema", "System", "Sistema", "Система"},
+    [S_P_ON] = {"sí", "yes", "sim", "да"},
+    [S_P_OFF] = {"no", "no", "não", "нет"},
+    [S_P_ENABLED] = {"Encendida", "On", "Ligada", "Включён"},
+    [S_P_ADDRESS] = {"Dirección", "Address", "Endereço", "Адрес"},
+    [S_P_PORT] = {"Puerto", "Port", "Porta", "Порт"},
+    [S_P_KEY] = {"Clave", "Key", "Chave", "Ключ"},
+    [S_P_NO_KEY] = {"sin clave", "none", "sem chave", "без ключа"},
+    [S_P_SET] = {"Poner una clave", "Set a key", "Definir uma chave", "Задать ключ"},
+    [S_P_CLEAR] = {"Quitarla", "Remove it", "Remover", "Убрать"},
+    [S_P_REQUESTS] = {"Solicitudes", "Requests", "Requisições", "Запросы"},
+    [S_P_BACKEND] = {"Servidor de imágenes", "Image backend", "Servidor de imagens", "Сервер картинок"},
+    [S_P_FOLDER] = {"Carpeta", "Folder", "Pasta", "Папка"},
+    [S_P_THINK_CAP] = {"Tope de razonamiento", "Reasoning cap", "Limite de raciocínio", "Предел размышлений"},
+    [S_P_LANGUAGE] = {"Idioma", "Language", "Idioma", "Язык"},
+    [S_P_DOWNLOAD] = {"Descargar un modelo", "Download a model", "Baixar um modelo", "Скачать модель"},
+    [S_P_CLEAR_CHAT] = {"Borrar la conversación", "Clear the conversation", "Apagar a conversa",
+                        "Очистить разговор"},
+    [S_P_VERSION] = {"Versión", "Version", "Versão", "Версия"},
+    [S_P_SECTION] = {"Sección", "Section", "Seção", "Раздел"},
+    [S_P_CHANGE] = {"Cambiar", "Change", "Mudar", "Изменить"},
+    [S_P_OPEN] = {"Abrir", "Open", "Abrir", "Открыть"},
+    [S_P_BACK] = {"Volver", "Back", "Voltar", "Назад"},
+    [S_P_NOTHING] = {"nada configurado", "not set", "nada configurado", "не задано"},
+    [S_P_SAVED] = {"Guardadas en", "Kept in", "Guardadas em", "Сохранены в"},
+    [S_P_ENGINE] = {"Motor", "Engine", "Motor", "Движок"},
+    [S_P_MOVE] = {"Mover", "Move", "Mover", "Переместить"},
+    [S_P_MEM] = {"Memoria libre", "Free memory", "Memória livre", "Свободная память"},
+    [S_P_KERNELS] = {"Kernels", "Kernels", "Kernels", "Ядра"},
+    [S_P_ABOUT] = {"Acerca de", "About", "Sobre", "О программе"},
+    [S_MODEL_LABEL] = {"Modelo", "Model", "Modelo", "Модель"},
     [S_SYSTEM_PROMPT] = {
         "Eres Station AI, un asistente útil que funciona sin internet en la GPU de una PlayStation 4. "
         "Responde en el idioma del usuario, de forma clara y sin rodeos.",
@@ -1739,13 +1774,13 @@ static void draw_empty(const ChatView* v) {
     y += font.line + 6;
     draw_center(&font_small, cx, y, tr(S_EMPTY_HINT), C_TEXT_MUTED);
     y += font_small.line + 44;
-    // two action cards
-    const Hint acts[2] = {{BTN_CROSS, S_WRITE}, {BTN_SQUARE, S_TALK_HOLD}};
-    int ws[2], total = 0;
-    for (int i = 0; i < 2; i++) ws[i] = 34 + 14 + str_width(&font, tr(acts[i].label)) + 56, total += ws[i];
-    total += 28;
+    // three action cards: write, talk, and the control panel (OPTIONS)
+    const Hint acts[3] = {{BTN_CROSS, S_WRITE}, {BTN_SQUARE, S_TALK_HOLD}, {BTN_OPTIONS, S_PANEL}};
+    int ws[3], total = 0;
+    for (int i = 0; i < 3; i++) ws[i] = 34 + 14 + str_width(&font, tr(acts[i].label)) + 56, total += ws[i];
+    total += 56;
     x = cx - total / 2;
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         rrect(x, y, ws[i], 76, 20, C_SURFACE, 255);
         rrect_line(x, y, ws[i], 76, 20, 1, C_LINE_HI, 255);
         int bw = draw_btn(acts[i].btn, x + 28, y + 38);
@@ -1883,6 +1918,7 @@ void draw_chat(ChatView* v) {
     if (v->generating) h[n++] = (Hint){BTN_CIRCLE, S_STOP};
     else h[n++] = (Hint){BTN_CROSS, S_WRITE}, h[n++] = (Hint){BTN_SQUARE, S_TALK_HOLD};
     h[n++] = (Hint){BTN_TRIANGLE, S_NEW_CHAT};
+    if (!n_msgs) h[n++] = (Hint){BTN_OPTIONS, S_PANEL};   // (the empty screen has room for it in the footer too)
     if (n_msgs) h[n++] = (Hint){BTN_UPDOWN, S_SCROLL};
     if (!v->generating) h[n++] = (Hint){BTN_L1, S_VOICE_MODE};
     if (v->can_run && !v->generating) h[n++] = (Hint){BTN_R1, S_PY_RUN};
@@ -2190,6 +2226,94 @@ static void kb_draw_key(const Kb* kb, int r, int k, int x0, int y0, int sel) {
     int tw = str_width(f, label);
     uint32_t col = sel || enter ? C_ACCENT_INK : on ? C_ACCENT : special ? C_TEXT_DIM : C_TEXT;
     draw_str(f, x + (w - tw) / 2, ky + (KEY_H - f->line) / 2, label, col);
+}
+
+
+// ---- the control panel ----------------------------------------------------------------------------------------
+// Four sections of switches and numbers, and one of figures: the same surfaces, the same mint, no boxes. The rows are
+// built and acted on in panel.inc (main.c); this only draws what it is given.
+
+static void panel_switch(int x_right, int cy, int on) {
+    const int w = 56, h = 26;
+    int x = x_right - w;
+    rrect(x, cy - h / 2, w, h, h / 2, on ? C_ACCENT : 0x2A2E36, on ? 255 : 235);
+    circle(x + (on ? w - 14 : 14), cy, 9.5f, 0, on ? C_ACCENT_INK : 0x8A93A0, 255);
+}
+
+static void panel_chevron(int x, int cy) {   // an action: it opens something
+    line(x + 2, cy - 7, x + 9, cy, 2.0f, C_TEXT_MUTED, 220);
+    line(x + 9, cy, x + 2, cy + 7, 2.0f, C_TEXT_MUTED, 220);
+}
+
+void draw_panel(const PanelView* pv) {
+    draw_background();
+    const int cy = HEADER_H / 2;
+    fill_a(0, 0, SCREEN_W, HEADER_H - 1, 0x0C0E12, 215);
+    draw_mark(48, cy, 46);
+    int x = draw_str(&font_big, 116, cy - font_big.line / 2, "Station", 0xFFFFFF);
+    x = draw_str(&font_big, x + font_big.space, cy - font_big.line / 2, "AI", C_ACCENT);
+    draw_str(&font_small, x + 24, cy - font_small.line / 2, "/", C_LINE_HI);
+    draw_str(&font_small, x + 44, cy - font_small.line / 2, tr(S_PANEL), C_TEXT_MUTED);
+    // the API's state, at the top right: what a person wants to know first
+    const char* addr = pv->api_on ? (pv->api_addr && pv->api_addr[0] ? pv->api_addr : tr(S_P_ON)) : tr(S_API_OFF);
+    int tw = str_width(&font_small, addr) + 100;
+    int cx1 = SCREEN_W - 56 - tw;
+    rrect(cx1, cy - 21, tw, 42, 21, 0x14171C, 255);
+    rrect_line(cx1, cy - 21, tw, 42, 21, 1, C_LINE, 255);
+    circle(cx1 + 22, cy, 5, 0, pv->api_on ? C_ACCENT : 0x5A6270, 255);
+    draw_str(&font_small, cx1 + 36, cy - font_small.line / 2, "API", C_TEXT_MUTED);
+    draw_str(&font_small, cx1 + 74, cy - font_small.line / 2, addr, pv->api_on ? C_TEXT : C_TEXT_MUTED);
+    fill(0, HEADER_H - 1, SCREEN_W, 1, C_LINE);
+
+    // the sections, down the left
+    const int y0 = HEADER_H + 34, rail_w = 306, rx = 96, item_h = 62, item_gap = 12;
+    for (int i = 0; i < pv->n_tabs; i++) {
+        int ty = y0 + i * (item_h + item_gap), sel = i == pv->tab;
+        if (sel) {
+            rrect(rx, ty, rail_w, item_h, 16, C_SURFACE_HI, 255);
+            rrect_line(rx, ty, rail_w, item_h, 16, 1, C_LINE_HI, 255);
+            rrect(rx, ty + 17, 3, item_h - 34, 2, C_ACCENT, 255);
+        }
+        draw_str(&font, rx + 30, ty + item_h / 2 - font.line / 2, tr(pv->tabs[i]), sel ? 0xFFFFFF : C_TEXT_MUTED);
+    }
+
+    // the rows of the open section, under its name
+    const int cx = 470, cw = SCREEN_W - 96 - cx, rh = 82;
+    draw_str(&font_big, cx, y0 - 6, tr(pv->tabs[pv->tab]), 0xFFFFFF);
+    fill(cx, y0 + 62, cw, 1, C_LINE);
+    int ry = y0 + 66;
+    for (int i = 0; i < pv->n_rows; i++) {
+        const PanelRow* r = &pv->rows[i];
+        int sel = i == pv->sel;
+        if (i) fill(cx, ry, cw, 1, sel || i == pv->sel - 1 ? 0x00000000 : C_LINE);   // a hairline between rows
+        if (sel) {   // the row under the cursor: a surface, a mint edge, the text white
+            rrect(cx - 26, ry + 3, cw + 52, rh - 6, 14, C_SURFACE_HI, 255);
+            rrect_line(cx - 26, ry + 3, cw + 52, rh - 6, 14, 1, C_LINE_HI, 255);
+            rrect(cx - 26, ry + 25, 3, rh - 50, 2, C_ACCENT, 255);
+        }
+        int ty = ry + rh / 2 - font.line / 2;
+        draw_str(&font, cx, ty, tr(r->label), sel ? 0xFFFFFF : C_TEXT);
+        if (r->kind == PANEL_SWITCH) {
+            panel_switch(cx + cw - 18, ry + rh / 2, r->on);
+        } else {
+            int right = cx + cw - (r->kind == PANEL_ACTION ? 44 : 18);
+            uint32_t col = r->kind == PANEL_ACTION ? (sel ? C_ACCENT_HI : C_TEXT_DIM)
+                                                   : r->kind == PANEL_STEP ? (sel ? C_ACCENT_HI : C_TEXT)
+                                                                           : C_TEXT_MUTED;
+            draw_str(&font_small, right - str_width(&font_small, r->value), ry + rh / 2 - font_small.line / 2,
+                     r->value, col);
+            if (r->kind == PANEL_ACTION) panel_chevron(right + 6, ry + rh / 2);
+        }
+        ry += rh;
+    }
+    if (pv->status && pv->status[0]) {
+        fill(cx, ry, cw, 1, C_LINE);
+        draw_str(&font_small, cx, ry + 30, pv->status, C_TEXT_MUTED);
+    }
+
+    static const Hint hints[] = {{BTN_UPDOWN, S_P_MOVE}, {BTN_L1, S_P_SECTION}, {BTN_CROSS, S_P_OPEN},
+                                 {BTN_R2, S_P_CHANGE}, {BTN_CIRCLE, S_P_BACK}};
+    draw_footer(hints, (int)(sizeof(hints) / sizeof(hints[0])), NULL);
 }
 
 // The keyboard is drawn in two layers: everything that only changes with the layout, page, shift or accent

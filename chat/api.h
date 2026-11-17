@@ -1,4 +1,4 @@
-// OpenAI-compatible HTTP API on the console (port API_PORT, on the LAN). The server thread (api.c) reads the
+// OpenAI-compatible HTTP API on the console (port api_port(), 8080 unless changed, on the LAN). The server thread (api.c) reads the
 // requests and queues one chat job at a time; the main loop (api_run.inc) runs it on the model between turns
 // and writes the reply to the socket. Protocol and JSON: api_proto.h.
 // The API is off until api_enable turns it on (L3 on the chat screen, main.c): nothing listens before that.
@@ -7,7 +7,8 @@
 
 #include <stddef.h>
 
-#define API_PORT 8080
+#define API_PORT 8080      // the port it listens on unless the panel (panel.inc) sets another
+#define API_PORT_FILE "/data/garlic_api_port.txt"   // the port it listened on last, kept between starts
 
 // What a request asks for: a reply on /v1/chat/completions, /v1/completions or /v1/responses (the same tokens, three
 // shapes), or a picture on /v1/images/generations (imgen.c).
@@ -33,6 +34,15 @@ ApiJob* api_take(void);
 void api_done(ApiJob* job);
 // Writes all n bytes to fd. Returns 0, or -1 if the client went away.
 int api_send(int fd, const char* p, size_t n);
+// The port the API listens on, and setting it (the panel's row): a port already in use just leaves the API off. The
+// new port is kept in API_PORT_FILE, and comes back at the next start.
+int api_port(void);
+void api_set_port(int port);
+// Reads API_KEY_FILE again, for when the panel has just written a new key (or removed it).
+void api_reload_key(void);
+// How many requests have been answered (the panel's "requests" figure).
+unsigned api_requests(void);
+
 // The model's name as the API reports it.
 void api_set_model(const char* name);
 const char* api_model(void);

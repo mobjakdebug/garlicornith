@@ -141,6 +141,57 @@ int main(int argc, char** argv) {
         float levels[24];
         for (int i = 0; i < 24; i++) levels[i] = 0.2f + 0.8f * (float)((i * 37) % 11) / 11.0f;
         draw_voice(VOICE_RECORDING, levels, 24, 1.8, 30.0, 1.8);
+    } else if (!strncmp(screen, "panel", 5)) {   // the control panel, each section (panel, panel1 … panel4)
+        static PanelView pv;
+        memset(&pv, 0, sizeof(pv));
+        pv.tabs[0] = S_P_TAB_API, pv.tabs[1] = S_P_TAB_IMAGES, pv.tabs[2] = S_P_TAB_MODEL,
+        pv.tabs[3] = S_P_TAB_SYSTEM, pv.tabs[4] = S_P_ABOUT;
+        pv.n_tabs = 5;
+        pv.tab = screen[5] ? screen[5] - '0' : 0;
+        pv.api_on = 1;
+        pv.api_addr = "192.168.1.42:8080";
+        pv.sel = 1;
+        if (pv.tab == 0) {
+            pv.rows[0] = (PanelRow){S_P_ENABLED, "", PANEL_SWITCH, 1};
+            pv.rows[1] = (PanelRow){S_P_ADDRESS, "192.168.1.42:8080", PANEL_VALUE, 0};
+            pv.rows[2] = (PanelRow){S_P_PORT, "8080", PANEL_STEP, 0};
+            pv.rows[3] = (PanelRow){S_P_KEY, "guardada", PANEL_ACTION, 0};
+            pv.rows[4] = (PanelRow){S_P_REQUESTS, "37", PANEL_VALUE, 0};
+            pv.n_rows = 5;
+            pv.status = "POST /v1/chat/completions · /v1/completions · /v1/responses · /v1/images/generations";
+        } else if (pv.tab == 1) {
+            pv.rows[0] = (PanelRow){S_P_BACKEND, "http://192.168.1.10:8080/v1", PANEL_VALUE, 0};
+            pv.rows[1] = (PanelRow){S_MODEL_LABEL, "sdxl", PANEL_STEP, 0};
+            pv.rows[2] = (PanelRow){S_P_KEY, "sin clave", PANEL_ACTION, 0};
+            pv.rows[3] = (PanelRow){S_P_SAVED, "/data/station-ai/images", PANEL_VALUE, 0};
+            pv.rows[4] = (PanelRow){S_P_CLEAR, "", PANEL_ACTION, 0};
+            pv.n_rows = 5;
+            pv.status = "Las imágenes que llegan se guardan y se muestran en la conversación.";
+        } else if (pv.tab == 2) {
+            pv.rows[0] = (PanelRow){S_P_ENGINE, "Ornith-1.5-9B", PANEL_VALUE, 0};
+            pv.rows[1] = (PanelRow){S_TEMPERATURE, "0.70", PANEL_STEP, 0};
+            pv.rows[2] = (PanelRow){S_THINK_ON_HINT, "", PANEL_SWITCH, 0};
+            pv.rows[3] = (PanelRow){S_P_THINK_CAP, "1024", PANEL_STEP, 0};
+            pv.rows[4] = (PanelRow){S_CONTEXT, "4.2k / 40k", PANEL_VALUE, 0};
+            pv.rows[5] = (PanelRow){S_VOICE_MODE, "lista", PANEL_VALUE, 0};
+            pv.n_rows = 6;
+            pv.status = "L2 y R2 cambian el valor; ✕ enciende y apaga.";
+        } else if (pv.tab == 3) {
+            pv.rows[0] = (PanelRow){S_P_LANGUAGE, "English", PANEL_STEP, 0};
+            pv.rows[1] = (PanelRow){S_P_DOWNLOAD, "", PANEL_ACTION, 0};
+            pv.rows[2] = (PanelRow){S_P_CLEAR_CHAT, "", PANEL_ACTION, 0};
+            pv.n_rows = 3;
+            pv.status = "El idioma se guarda y vuelve en el próximo arranque.";
+        } else {
+            pv.rows[0] = (PanelRow){S_P_VERSION, "1.22", PANEL_VALUE, 0};
+            pv.rows[1] = (PanelRow){S_P_ENGINE, "Ornith-1.5-9B · q4s", PANEL_VALUE, 0};
+            pv.rows[2] = (PanelRow){S_P_KERNELS, "419 052 B", PANEL_VALUE, 0};
+            pv.rows[3] = (PanelRow){S_P_MEM, "1 812 MiB", PANEL_VALUE, 0};
+            pv.rows[4] = (PanelRow){S_P_REQUESTS, "37", PANEL_VALUE, 0};
+            pv.n_rows = 5;
+            pv.status = "Station AI · 100 % local · sin internet";
+        }
+        draw_panel(&pv);
     } else if (!strcmp(screen, "picture")) {
         demo_messages();
         // a stand-in for what an image backend draws: sky, sun, hills
