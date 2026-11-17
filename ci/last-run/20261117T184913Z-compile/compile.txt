@@ -1,0 +1,9 @@
+In file included from /home/runner/work/garlicornith/garlicornith/chat/dl.c:5:
+/home/runner/work/garlicornith/garlicornith/chat/dl.h:14:73: error: unknown type name 'size_t'
+   14 | char* dl_http_post(const char* url, const char* auth, const char* body, size_t blen, size_t* out_len, int* status);
+      |                                                                         ^
+/home/runner/work/garlicornith/garlicornith/chat/dl.h:14:86: error: unknown type name 'size_t'
+   14 | char* dl_http_post(const char* url, const char* auth, const char* body, size_t blen, size_t* out_len, int* status);
+      |                                                                                      ^
+2 errors generated.
+compile failed: /home/runner/work/garlicornith/garlicornith/chat/dl.c
