@@ -27,6 +27,7 @@
 #include <time.h>
 
 #include "api.h"
+#include "dl.h"
 #include "api_proto.h"
 #include "engine.h"
 #include "tokenizer.h"
@@ -120,7 +121,7 @@ static int video_init(void) {
     return back ? 0 : -5;
 }
 
-static void present(void) {
+void present(void) {
     memcpy(fb[cur], back, SCREEN_W * SCREEN_H * 4);
     sceVideoOutSubmitFlip(video, cur, ORBIS_VIDEO_OUT_FLIP_VSYNC, frame);
     for (;;) {
@@ -488,6 +489,50 @@ static void loading(void* user, float frac, const char* what) {
     last = t;
     draw_loading(frac, user ? (const char*)user : what);
     present();
+}
+
+int ui_user_id(void) { return user_id; }
+
+// Whether the model a directory's model.idx names is there and whole: its weights file at the path the index
+// records (or inside the package, /app0/models), of the size it records. Without one, the app offers to download
+// the model on the console itself (dl.c) before it tries to start the engine.
+static int model_present(const char* dir) {
+    char path[300];
+    snprintf(path, sizeof(path), "%s/model.idx", dir);
+    int f = open(path, O_RDONLY);
+    if (f < 0) return 0;
+    uint8_t h[188];
+    ssize_t n = read(f, h, sizeof(h));
+    close(f);
+    if (n < 188 || (memcmp(h, "PMDL", 4) && memcmp(h, "PMQ5", 4))) return 0;
+    char weights[130];
+    memcpy(weights, h + 52, 128);
+    weights[128] = 0;
+    uint64_t size = 0;
+    memcpy(&size, h + 180, 8);
+    const char* base = strrchr(weights, '/');
+    char in_pkg[200];
+    snprintf(in_pkg, sizeof(in_pkg), "/app0/models/%s", base ? base + 1 : weights);
+    const char* tries[2] = {weights, in_pkg};
+    for (int i = 0; i < 2; i++) {
+        int g = open(tries[i], O_RDONLY);
+        if (g < 0) continue;
+        off_t sz = lseek(g, 0, SEEK_END);
+        close(g);
+        if (size && (uint64_t)sz != size) {
+            say("model: %s is %lld of %llu bytes", tries[i], (long long)sz, (unsigned long long)size);
+            return 0;
+        }
+        return 1;
+    }
+    say("model: no weights file (%s)", weights);
+    return 0;
+}
+
+static int pad_button_held(unsigned int btn) {   // (at start-up, before the frame loop: for the downloader)
+    OrbisPadData pd;
+    if (g_pad < 0 || scePadReadState(g_pad, &pd) != 0) return 0;
+    return (pd.buttons & btn) != 0;
 }
 
 static void show_error(const char* what) {
@@ -1913,6 +1958,11 @@ int main(void) {
     say("tokenizer: %u tokens", tok.n_vocab);
     eng_margin_mb = 64 - ui_screen_pool_mb();   // (the screen block came out of the system's 64 MiB)
     const char* eng_assets = ASSETS;
+    if (dl_model_dir()) eng_assets = dl_model_dir();   // a model downloaded on the console, if one is there
+    if (!model_present(eng_assets) || pad_button_held(ORBIS_PAD_BUTTON_TRIANGLE)) {
+        say("model: %s; offering the downloader", model_present(eng_assets) ? "there (Triangle at start)" : "missing");
+        if (dl_run() && dl_model_dir()) eng_assets = dl_model_dir();
+    }
     if (engine_init(&eng, eng_assets, loading, (void*)tr(S_LOADING_MODEL))) show_error(eng.error);
     say("language model ready; GPU memory used %u of %u MiB; context cache %s, %u tokens (%u while voice mode "
         "borrows %u MiB)", (unsigned)(eng.next >> 20), (unsigned)(eng.mem_size >> 20),

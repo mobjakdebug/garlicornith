@@ -49,7 +49,7 @@ typedef struct {
     uint32_t nd;                  // draft rows: the first nd rows of lm_head (the most frequent tokens)
     Tensor t[MT_N];
     uint64_t base, size;          // the lent memory (T3's weights)
-    uint64_t model, table, kc, vc, tq_split;
+    uint64_t model, table, kc, vc, stride;   // stride: the head's cache's second block of 8192
     uint64_t E, Hc, X, x, xn, O, att, Q, L, raw, xs, st;
     const GpuKernel *k_emb, *k_draft, *k_accept, *k_convv, *k_commit, *k_deltav, *k_copyg, *k_rmsg;
     float theta;
@@ -140,8 +140,8 @@ static uint64_t spec_layout(Engine* e, uint64_t base) {
     TAKE(table, s->tsize);
     uint64_t kb = (uint64_t)e->n_kv * 8192 * (e->head_dim / 2 + 4);
     TAKE(kc, 4 * kb);
-    s->vc = s->kc + kb;
-    s->tq_split = 2 * kb;
+    s->vc = s->kc + kb;          // [k block 0][v block 0][k block 1][v block 1], 8192 positions each
+    s->stride = 2 * kb;
     uint64_t H = e->hidden, R = SPEC_ROWS;
     uint32_t nl = 0, ld = 0, npad = e->t[e->head_idx].rows;
     for (uint32_t i = 0; i < e->n_layers; i++)
@@ -261,16 +261,19 @@ static void mtp_rows(Engine* e, uint64_t E, uint64_t Hs, uint32_t c, uint32_t i0
         uint64_t q = e->pf_a + (uint64_t)r * ld * 4;
         dispatch(e, e->k_qk_tq,
                  args(e, "pppppppuuufp", q, SW(e, MT_Q_NORM), SW(e, MT_K_NORM), e->rope, s->kc, s->vc, e->tq_tab, i0 + r,
-                      e->n_heads, e->n_kv, (double)e->eps, s->tq_split),
+                      e->n_heads, e->n_kv, (double)e->eps, s->stride),
                  G, 64);
     }
     for (uint32_t r = 0; r < c; r++) {
         uint64_t q = e->pf_a + (uint64_t)r * ld * 4, out = s->att + (uint64_t)r * nq * 4;
         uint32_t pos = i0 + r, blocks = pos / ATT_BLOCK + 1;
         dispatch(e, e->k_attn_tq,
-                 args(e, "pppppuuufp", q, s->kc, s->vc, e->attn_part, e->tq_tab, pos, e->n_heads, e->n_kv, sc, s->tq_split),
+                 args(e, "pppppuuufpu", q, s->kc, s->vc, e->attn_part, e->tq_tab, pos, e->n_heads, e->n_kv, sc,
+                      s->stride, e->max_seq / ATT_BLOCK),
                  blocks * e->n_kv, 256);
-        dispatch(e, e->k_comb_tq, args(e, "pppuu", e->attn_part, out, e->tq_tab, e->n_heads, blocks), e->n_heads, 256);
+        dispatch(e, e->k_comb_tq,
+                 args(e, "pppuuu", e->attn_part, out, e->tq_tab, e->n_heads, blocks, e->max_seq / ATT_BLOCK),
+                 e->n_heads, 256);
     }
     uint64_t gatep = e->pf_a + (uint64_t)(e->n_heads + 2 * e->n_kv) * e->head_dim * 4;
     dispatch(e, e->k_sigr, args(e, "ppuuu", s->att, gatep, nq, ld, c), (c * nq + 255) / 256, 256);
@@ -418,21 +421,23 @@ static int spec_verify(Engine* e, uint32_t tok, uint32_t pos, uint32_t K, float 
             li++;
         } else {
             uint32_t ld = e->t[b + 4].rows, nq = e->n_heads * e->head_dim, G = e->n_heads + 2 * e->n_kv;
+            uint32_t pstride = e->max_seq / ATT_BLOCK;
             double sc = 1.0 / sqrt((double)e->head_dim);
             mmr(e, b + 4, e->pf_xn, e->pf_a, n, 0);
             for (uint32_t r = 0; r < n; r++)
                 dispatch(e, e->k_qk_tq,
                          args(e, "pppppppuuufp", e->pf_a + (uint64_t)r * ld * 4, W(e, b + 2), W(e, b + 3), e->rope, kc, vc,
-                              e->tq_tab, pos + r, e->n_heads, e->n_kv, (double)e->eps, e->tq_split),
+                              e->tq_tab, pos + r, e->n_heads, e->n_kv, (double)e->eps, e->tq_stride),
                          G, 64);
             for (uint32_t r = 0; r < n; r++) {
                 uint64_t q = e->pf_a + (uint64_t)r * ld * 4, out = e->pf_h + (uint64_t)r * nq * 4;
                 uint32_t p = pos + r, blocks = p / ATT_BLOCK + 1;
                 dispatch(e, e->k_attn_tq,
-                         args(e, "pppppuuufp", q, kc, vc, e->attn_part, e->tq_tab, p, e->n_heads, e->n_kv, sc, e->tq_split),
+                         args(e, "pppppuuufpu", q, kc, vc, e->attn_part, e->tq_tab, p, e->n_heads, e->n_kv, sc,
+                              e->tq_stride, pstride),
                          blocks * e->n_kv, 256);
-                dispatch(e, e->k_comb_tq, args(e, "pppuu", e->attn_part, out, e->tq_tab, e->n_heads, blocks), e->n_heads,
-                         256);
+                dispatch(e, e->k_comb_tq, args(e, "pppuuu", e->attn_part, out, e->tq_tab, e->n_heads, blocks, pstride),
+                         e->n_heads, 256);
             }
             uint64_t gate = e->pf_a + (uint64_t)(e->n_heads + 2 * e->n_kv) * e->head_dim * 4;
             dispatch(e, e->k_sigr, args(e, "ppuuu", e->pf_h, gate, nq, ld, n), (n * nq + 255) / 256, 256);

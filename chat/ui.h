@@ -12,6 +12,8 @@
 extern uint32_t* back;                               // the frame being drawn, 0x80RRGGBB
 void say(const char* fmt, ...);                      // log
 uint8_t* read_all(const char* path, size_t* size);   // whole file, malloc'd
+void present(void);                                  // the frame to the screen (and wait for the flip)
+int ui_user_id(void);                                // the console's user, for the system's dialogs
 
 // ---- languages: chosen from the console's system language ----
 enum { LANG_ES, LANG_EN, LANG_PT, LANG_RU, N_LANGS };
