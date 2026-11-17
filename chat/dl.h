@@ -4,6 +4,8 @@
 // then points the app at that directory.
 #pragma once
 
+#include <stddef.h>
+
 // Runs the screen end to end: asks for the repository (the console's keyboard), connects, downloads, verifies the
 // sizes. Returns 1 when a model is ready in the directory below, 0 when the player cancelled or it failed (the
 // reason is in the log, and on the screen for a few seconds).
