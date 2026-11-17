@@ -12,37 +12,55 @@
 #endif
 
 // ---- theme ---------------------------------------------------------------------------------------------------
-#define C_BG_TOP 0x0B1C3A
-#define C_BG_BOT 0x040A18
-#define C_ACCENT 0x0070D1
-#define C_ACCENT_HI 0x3FA9F5
-#define C_TEXT 0xE8EFFA
-#define C_TEXT_DIM 0xA3B5D2
-#define C_TEXT_MUTED 0x6A80A3
-#define C_SURFACE 0x0E1D3A
-#define C_SURFACE_HI 0x15284B
-#define C_LINE 0x1C3358
-#define C_LINE_HI 0x2A4672
-#define C_USER 0x0B5DC6
-#define C_PANEL 0x0A1631
-#define C_KEY 0x152A4E
-#define C_KEY_SPECIAL 0x0F1F3E
-#define C_GREEN 0x3DDC97
-#define C_RED 0xFF6B76
-#define C_CROSS 0x8AB4FF
-#define C_CIRCLE 0xFF7A85
-#define C_TRIANGLE 0x45D6A0
-#define C_SQUARE 0xF59ADB
+// A studio: near-black and neutral, one accent (mint, running to teal in gradients), a single hairline everywhere,
+// and colour only where it means something (the caret, the meter, a status dot, the controller's buttons).
+#define C_BG_TOP 0x0B0D11
+#define C_BG_BOT 0x060709
+#define C_ACCENT 0x6EE7A8
+#define C_ACCENT_HI 0x9CF6C6
+#define C_ACCENT_2 0x46D9C4
+#define C_ACCENT_INK 0x06231A
+#define C_TEXT 0xECEEF2
+#define C_TEXT_DIM 0xA2A9B6
+#define C_TEXT_MUTED 0x6E7683
+#define C_SURFACE 0x101216
+#define C_SURFACE_HI 0x171A20
+#define C_LINE 0x22252C
+#define C_LINE_HI 0x2E323B
+#define C_USER 0x12302A
+#define C_USER_LINE 0x1F4A3D
+#define C_PANEL 0x0B0D11
+#define C_CODE 0x090B0E
+#define C_KEY 0x171A20
+#define C_KEY_SPECIAL 0x111318
+#define C_GREEN 0x4ADE80
+#define C_RED 0xFB7185
+#define C_AMBER 0xFBBF24
+#define C_CROSS 0x93BDFF
+#define C_CIRCLE 0xFB7185
+#define C_TRIANGLE 0x4ADE80
+#define C_SQUARE 0xE9A8FF
 
-#define HEADER_H 100
-#define FOOTER_H 84
-#define COL_W 1440
+#define HEADER_H 88
+#define FOOTER_H 76
+#define COL_W 1400
 #define COL_X ((SCREEN_W - COL_W) / 2)
-#define AI_INDENT 84
+#define AI_INDENT 0
 #define USER_MAX_W 1000
-#define BUB_PAD_X 28
-#define BUB_PAD_Y 16
-#define MSG_GAP 40
+#define BUB_PAD_X 30
+#define BUB_PAD_Y 20
+#define CARD_PAD 26
+#define MSG_GAP 26
+
+// Two colours, t in 0..1, and a horizontal gradient between them (the accent's gradients and the meter).
+static inline uint32_t mix(uint32_t a, uint32_t b, float t) {
+    if (t <= 0) return a;
+    if (t >= 1) return b;
+    int r = (int)((a >> 16 & 255) + ((int)(b >> 16 & 255) - (int)(a >> 16 & 255)) * t);
+    int g = (int)((a >> 8 & 255) + ((int)(b >> 8 & 255) - (int)(a >> 8 & 255)) * t);
+    int bl = (int)((a & 255) + ((int)(b & 255) - (int)(a & 255)) * t);
+    return (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)bl;
+}
 
 int ui_lang = LANG_ES;
 const char* ui_error = "";
@@ -397,26 +415,27 @@ uint32_t* ui_screen_buf(void) {
     return malloc(SCREEN_W * SCREEN_H * 4);
 }
 
+// The backdrop: near-black, a soft mint glow behind the header (it fades to nothing by mid-screen), a faint 48-pixel
+// grid for the surfaces to sit on, and the two bars a shade darker with a single hairline under each.
 static void make_background(void) {
     bg = ui_screen_buf();
     uint32_t seed = 1;
     for (int y = 0; y < SCREEN_H; y++) {
         float t = (float)y / (SCREEN_H - 1);
-        float base[3] = {(C_BG_TOP >> 16 & 255) + ((C_BG_BOT >> 16 & 255) - (C_BG_TOP >> 16 & 255)) * t,
-                         (C_BG_TOP >> 8 & 255) + ((C_BG_BOT >> 8 & 255) - (C_BG_TOP >> 8 & 255)) * t,
-                         (C_BG_TOP & 255) + ((C_BG_BOT & 255) - (C_BG_TOP & 255)) * t};
+        float r0 = (C_BG_TOP >> 16 & 255) + ((C_BG_BOT >> 16 & 255) - (C_BG_TOP >> 16 & 255)) * t;
+        float g0 = (C_BG_TOP >> 8 & 255) + ((C_BG_BOT >> 8 & 255) - (C_BG_TOP >> 8 & 255)) * t;
+        float b0 = (C_BG_TOP & 255) + ((C_BG_BOT & 255) - (C_BG_TOP & 255)) * t;
         for (int x = 0; x < SCREEN_W; x++) {
-            float dx = (x - SCREEN_W * 0.5f) / (SCREEN_W * 0.75f), dy = (y + 200.0f) / (SCREEN_H * 1.1f);
-            float g = 1.0f - (dx * dx + dy * dy);
-            g = g > 0 ? g * g * 0.55f : 0;
+            float dx = (x - SCREEN_W * 0.5f) / (SCREEN_W * 0.62f), dy = (y + 60.0f) / (SCREEN_H * 0.55f);
+            float glow = 1.0f - (dx * dx + dy * dy);
+            glow = glow > 0 ? glow * glow : 0;   // the glow: mint at the top, 6 % at most
+            float grid = ((x & 47) == 0 || (y & 47) == 0) ? 0.9f : 0;   // (a hint of a grid, not a table)
             seed = seed * 1664525u + 1013904223u;
-            float dither = ((seed >> 24) / 255.0f - 0.5f) * 1.2f;   // breaks up banding in the gradient
-            int r = (int)(base[0] + g * 6 + dither), gr = (int)(base[1] + g * 34 + dither), b = (int)(base[2] + g * 80 + dither);
+            float dither = ((seed >> 24) / 255.0f - 0.5f) * 1.1f;   // breaks up banding in the gradient
+            int r = (int)(r0 + glow * 5 + grid + dither);
+            int gr = (int)(g0 + glow * 16 + grid * 1.4f + dither);
+            int b = (int)(b0 + glow * 12 + grid * 1.2f + dither);
             r = r < 0 ? 0 : r > 255 ? 255 : r, gr = gr < 0 ? 0 : gr > 255 ? 255 : gr, b = b < 0 ? 0 : b > 255 ? 255 : b;
-            if (y < HEADER_H || y >= SCREEN_H - FOOTER_H) {   // header and footer bars: darker
-                r = r * 5 / 9 + 1, gr = gr * 5 / 9 + 3, b = b * 5 / 9 + 8;
-                if (y == HEADER_H - 1 || y == SCREEN_H - FOOTER_H) r = C_LINE >> 16, gr = C_LINE >> 8 & 255, b = C_LINE & 255;
-            }
             bg[y * SCREEN_W + x] = 0x80000000 | r << 16 | gr << 8 | b;
         }
     }
@@ -931,17 +950,29 @@ static void draw_table_line(const char* a, const char* b, int x, int top, int h,
     int xs[MAX_COLS + 1];
     xs[0] = x;
     for (int i = 0; i < n; i++) xs[i + 1] = xs[i] + widths[i] + 2 * CELL_PAD;
-    if (kind != 'R') {
-        fill(xs[0], top, xs[n] - xs[0] + 2, 2, kind == 'M' ? C_ACCENT : C_LINE_HI);
+    // A table in a card: a header row on the surface, zebra rows, one vertical hairline between the columns and a
+    // single hairline along the top and the bottom (no heavy grid).
+    if (kind == 'T') {
+        rrect(xs[0], top, xs[n] - xs[0], 12, 6, C_SURFACE, 255);
+        fill(xs[0], top, xs[n] - xs[0], 2, C_LINE_HI);
         return;
     }
-    if (header) fill(xs[0], top, xs[n] - xs[0], h, 0x12274C);
-    for (int i = 0; i <= n; i++) fill(xs[i], top, 2, h, C_LINE_HI);
+    if (kind == 'M') {
+        fill(xs[0], top, xs[n] - xs[0], 1, C_LINE);
+        return;
+    }
+    if (kind == 'B') {
+        fill(xs[0], top, xs[n] - xs[0], 1, C_LINE);
+        return;
+    }
+    if (header) fill(xs[0], top, xs[n] - xs[0], h, 0x15181E);
+    else fill(xs[0], top, xs[n] - xs[0], h, 0x0E1014);
+    for (int i = 1; i < n; i++) fill(xs[i], top + (header ? 12 : 6), 1, h - (header ? 12 : 12), C_LINE);
     const Font* f = header ? &font_bold : &font;
     for (int i = 0; i < n && p <= b; i++) {
         const char* e = p;
         while (e < b && *e != '\x02') e++;
-        draw_text(f, xs[i] + CELL_PAD, top + (h - f->line) / 2, p, e, header ? 0xFFFFFF : C_TEXT);
+        draw_text(f, xs[i] + CELL_PAD, top + (h - f->line) / 2, p, e, header ? C_TEXT_DIM : C_TEXT);
         p = e + 1;
     }
 }
@@ -954,8 +985,8 @@ enum { DECO_NONE, DECO_CODE_TOP, DECO_CODE, DECO_CODE_BOT, DECO_TABLE, DECO_HR }
 typedef struct {
     uint32_t text, strong, italic, code, code_bg, link, head, quote, marker;
 } Palette;
-static const Palette PAL_AI = {C_TEXT, 0xFFFFFF, 0xD2E2F8, 0x9CD6FF, 0x10264D, 0x63BBFF, 0xFFFFFF, 0xA8BAD6, C_ACCENT_HI};
-static const Palette PAL_USER = {0xFFFFFF, 0xFFFFFF, 0xE6F0FF, 0xFFFFFF, 0x0A4AA6, 0xDDEEFF, 0xFFFFFF, 0xDCE9FF, 0xCFE6FF};
+static const Palette PAL_AI = {C_TEXT, 0xFFFFFF, 0xC3CBD6, 0xC8EBD9, 0x14181D, 0x7FD8C8, 0xFFFFFF, 0xBFC6D1, C_ACCENT};
+static const Palette PAL_USER = {0xE9F7F0, 0xFFFFFF, 0xD3EBDF, 0xE9F7F0, 0x1B3B31, 0xB9E8D4, 0xFFFFFF, 0xCFE8DC, 0x8FDcC4};
 static const Palette PAL_NOTE = {C_TEXT_MUTED, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_DIM, C_SURFACE, C_TEXT_DIM, C_TEXT_DIM,
                                  C_TEXT_MUTED, C_TEXT_MUTED};
 static const Palette PAL_FIELD = {C_TEXT, C_TEXT, C_TEXT, C_TEXT, 0, C_TEXT, C_TEXT, C_TEXT, C_TEXT};
@@ -1371,8 +1402,9 @@ static void draw_layout(const Layout* L, int ox, int oy) {
             int j = i;
             while (j + 1 < L->n_lines && L->lines[j].deco != DECO_CODE_BOT) j++;
             int bottom = oy + L->lines[j].y + L->lines[j].h;
-            rrect(ox, ly, L->width, bottom - ly, 14, 0x061127, 255);
+            rrect(ox, ly, L->width, bottom - ly, 14, C_CODE, 255);
             rrect_line(ox, ly, L->width, bottom - ly, 14, 1, C_LINE, 255);
+            rrect(ox + 1, ly + 16, 3, bottom - ly - 32, 2, C_ACCENT, 120);   // a hairline of accent on the left
         }
         if (ly + ln->h < clip_y0) continue;
         if (ln->deco == DECO_HR) fill(ox, ly + ln->h / 2, L->width, 2, C_LINE_HI);
@@ -1409,8 +1441,8 @@ static int draw_btn(int btn, int x, int cy) {
     const int d = 34;
     float cx = x + d * 0.5f;
     if (btn <= BTN_SQUARE || btn == BTN_UPDOWN) {
-        circle(cx, cy, d * 0.5f, 0, 0x1A2D52, 255);
-        circle(cx, cy, d * 0.5f, 1.2f, 0x34548A, 255);
+        circle(cx, cy, d * 0.5f, 0, 0x191C22, 255);
+        circle(cx, cy, d * 0.5f, 1.2f, C_LINE_HI, 255);
         switch (btn) {
         case BTN_CROSS:
             line(cx - 6.5f, cy - 6.5f, cx + 6.5f, cy + 6.5f, 3.2f, C_CROSS, 255);
@@ -1437,9 +1469,9 @@ static int draw_btn(int btn, int x, int cy) {
     int w = str_width(&font_small, s) + 20, h = 30;
     int rad[4] = {8, 8, 8, 8};
     if (btn == BTN_L2 || btn == BTN_R2) rad[0] = rad[1] = 14, rad[2] = rad[3] = 6;
-    rrect4(x, cy - h / 2, w, h, rad, 0, 0x1A2D52, 255);
-    rrect4(x, cy - h / 2, w, h, rad, 1, 0x34548A, 255);
-    draw_str(&font_small, x + 10, cy - font_small.line / 2, s, 0xDCE6F5);
+    rrect4(x, cy - h / 2, w, h, rad, 0, 0x191C22, 255);
+    rrect4(x, cy - h / 2, w, h, rad, 1, C_LINE_HI, 255);
+    draw_str(&font_small, x + 10, cy - font_small.line / 2, s, C_TEXT_DIM);
     return w;
 }
 
@@ -1458,7 +1490,8 @@ static int footer_extra;   // (chat screen) room kept on the right for the L2 / 
 
 void draw_footer(const Hint* hints, int n, const char* right) {
     const int y = SCREEN_H - FOOTER_H, cy = y + FOOTER_H / 2;
-    memcpy(back + y * SCREEN_W, bg + y * SCREEN_W, FOOTER_H * SCREEN_W * 4);   // a clean footer bar
+    fill_a(0, y, SCREEN_W, FOOTER_H, 0x0C0E12, 225);   // the bar's own surface
+    fill(0, y, SCREEN_W, 1, C_LINE);
     int right_w = right ? str_width(&font_small, right) + 40 : 0;
     int avail = SCREEN_W - 2 * 72 - right_w - footer_extra, total = 0;
     for (int i = 0; i < n; i++) total += hint_width(&hints[i]);
@@ -1485,54 +1518,76 @@ static void fmt_k(char* out, int n) {   // 1234 -> "1.2k"
 // A rounded label at the right edge x_right; returns its left edge.
 static int chip(int x_right, int cy, const char* text, uint32_t color, uint32_t dot, float dot_alpha, int bar_frac_x1000) {
     int tw = str_width(&font_small, text);
-    int w = tw + 36 + (dot ? 20 : 0) + (bar_frac_x1000 >= 0 ? 96 : 0), h = 44, x = x_right - w;
-    rrect(x, cy - h / 2, w, h, h / 2, 0x0D1D3B, 230);
-    rrect_line(x, cy - h / 2, w, h, h / 2, 1, C_LINE_HI, 255);
-    int tx = x + 18;
+    int w = tw + 34 + (dot ? 18 : 0) + (bar_frac_x1000 >= 0 ? 78 : 0), h = 40, x = x_right - w;
+    rrect(x, cy - h / 2, w, h, h / 2, 0x14171C, 240);
+    rrect_line(x, cy - h / 2, w, h, h / 2, 1, C_LINE, 255);
+    int tx = x + 17;
     if (dot) {
-        circle(tx + 5, cy, 5, 0, dot, (int)(255 * dot_alpha));
-        tx += 20;
+        circle(tx + 4, cy, 4, 0, dot, (int)(255 * dot_alpha));
+        tx += 18;
     }
     draw_str(&font_small, tx, cy - font_small.line / 2, text, color);
-    if (bar_frac_x1000 >= 0) {
-        int bx = tx + tw + 14;
-        rrect(bx, cy - 3, 78, 6, 3, 0x1B3156, 255);
-        int fw = 78 * bar_frac_x1000 / 1000;
-        if (fw > 0) rrect(bx, cy - 3, fw < 6 ? 6 : fw, 6, 3, bar_frac_x1000 > 850 ? 0xF2A65A : C_ACCENT_HI, 255);
+    if (bar_frac_x1000 >= 0) {   // the context: a 64-pixel meter, mint to teal, amber past 85 %
+        int bw = 64, bx = tx + tw + 14;
+        rrect(bx, cy - 2, bw, 5, 2, 0x22262D, 255);
+        int fw = bw * bar_frac_x1000 / 1000;
+        if (fw < 4) fw = bar_frac_x1000 > 0 ? 4 : 0;
+        for (int i = 0; i < fw; i++) {   // (a gradient, a column at a time)
+            uint32_t c = bar_frac_x1000 > 850 ? C_AMBER : mix(C_ACCENT, C_ACCENT_2, (float)i / bw);
+            fill(bx + i, cy - 2, 1, 5, c);
+        }
+        if (fw) rrect(bx, cy - 2, fw < 5 ? 5 : fw, 5, 2, bar_frac_x1000 > 850 ? C_AMBER : C_ACCENT, 0);
     }
     return x;
 }
 
+// The mark in its rounded square, then the wordmark: "Station" in white, "AI" in the accent.
+static int draw_mark(int x, int cy, int size) {
+    int y = cy - size / 2;
+    rrect(x, y, size, size, size / 4, 0x141A18, 255);
+    for (int i = 0; i < size - 2; i++) {   // a mint-to-teal border, one pixel a column
+        uint32_t c = mix(C_ACCENT, C_ACCENT_2, (float)i / size);
+        rrect_line(x, y, size, size, size / 4, 1, c, 90);
+    }
+    int s = size - 18;
+    if (logo_s.px) draw_image(&logo_s, x + (size - s) / 2, y + (size - s) / 2, 255);
+    return x + size;
+}
+
 static void draw_header(const ChatView* v) {
-    draw_image(&logo_s, 64, (HEADER_H - logo_s.h) / 2 - 2, 255);
-    int tx = 64 + (logo_s.w ? logo_s.w + 14 : 0);
-    tx = draw_str(&font_big, tx, (HEADER_H - font_big.line) / 2, "Station", 0xFFFFFF);
-    draw_str(&font_big, tx + font_big.space, (HEADER_H - font_big.line) / 2, "LLM", C_ACCENT_HI);
-    int cy = HEADER_H / 2, x = SCREEN_W - 64;
+    const int cy = HEADER_H / 2;
+    fill_a(0, 0, SCREEN_W, HEADER_H - 1, 0x0C0E12, 215);   // the bar's own surface, over the glow
+    int tx = draw_mark(48, cy, 46) + 14;
+    tx = draw_str(&font_big, tx, cy - font_big.line / 2 - 1, "Station", 0xFFFFFF);
+    draw_str(&font_big, tx + font_big.space, cy - font_big.line / 2 - 1, "AI", C_ACCENT);
+    int x = SCREEN_W - 48;
     char a[24], b[24], ctx[96];
     fmt_k(a, v->pos), fmt_k(b, v->max_seq);
     snprintf(ctx, sizeof(ctx), "%s  %s / %s", tr(S_CONTEXT), a, b);
     int frac = v->max_seq ? (int)(1000.0 * v->pos / v->max_seq) : 0;
-    x = chip(x, cy, ctx, C_TEXT_DIM, 0, 0, frac) - 14;
+    x = chip(x, cy, ctx, C_TEXT_DIM, 0, 0, frac) - 10;
     float pulse = v->generating || v->reading ? 0.55f + 0.45f * sinf((float)v->time * 6.0f) : 1.0f;
-    x = chip(x, cy, v->model ? v->model : "", 0xFFFFFF, v->generating || v->reading ? C_ACCENT_HI : C_GREEN, pulse, -1) - 14;
+    x = chip(x, cy, v->model ? v->model : "", C_TEXT, v->generating || v->reading ? C_ACCENT : C_GREEN, pulse, -1) - 10;
     if (v->think_on) {   // the next question is thought first
         char t[48];
         snprintf(t, sizeof(t), "%s · %d", tr(S_THINK_CHIP), v->think_cap);
-        x = chip(x, cy, t, C_ACCENT_HI, C_ACCENT_HI, 1.0f, -1) - 14;
+        x = chip(x, cy, t, C_TEXT_DIM, C_ACCENT, 1.0f, -1) - 10;
     }
     if (v->api)   // the API is on: where it listens (the dot pulses while it answers a request)
-        x = chip(x, cy, v->api, 0xFFFFFF, v->api_busy ? C_ACCENT_HI : C_GREEN, v->api_busy ? pulse : 1.0f, -1) - 14;
+        x = chip(x, cy, v->api, C_TEXT, v->api_busy ? C_ACCENT : C_GREEN, v->api_busy ? pulse : 1.0f, -1) - 10;
     if (v->generating && v->tok_per_s > 0) {
         char s[48];
         snprintf(s, sizeof(s), "%.1f tok/s", v->tok_per_s);
-        chip(x, cy, s, C_ACCENT_HI, 0, 0, -1);
+        chip(x, cy, s, C_ACCENT, 0, 0, -1);
     } else if (v->reading) {
         chip(x, cy, tr(S_READING), C_TEXT_DIM, 0, 0, -1);
     }
+    fill(0, HEADER_H - 1, SCREEN_W, 1, C_LINE);
 }
 
 // ---- chat ------------------------------------------------------------------------------------------------------
+
+static int ai_head_h(void) { return font_small.line + 30; }   // the role line inside a reply's card
 
 static int msg_layout_width(int who) { return who == MSG_USER ? USER_MAX_W - 2 * BUB_PAD_X : who == MSG_AI ? COL_W - AI_INDENT : COL_W - 240; }
 static const Palette* msg_palette(int who) { return who == MSG_USER ? &PAL_USER : who == MSG_AI ? &PAL_AI : &PAL_NOTE; }
@@ -1558,7 +1613,7 @@ static void draw_thinking(const ChatView* v, int x, int y, int w) {
     snprintf(s, sizeof(s), "%d / %d  ·  %d s", v->think_n, v->think_cap, (int)v->think_s);
     draw_str(&font_small, x + w - str_width(&font_small, s), cy - font_small.line / 2, s, C_TEXT_MUTED);
     int by = y + THINK_HEAD_H - 4, n = v->think_n < v->think_cap ? v->think_n : v->think_cap;
-    rrect(x, by, w, 4, 2, 0x1B3156, 255);
+    rrect(x, by, w, 4, 2, 0x22262D, 255);
     int fw = v->think_cap > 0 ? (int)((long long)w * n / v->think_cap) : 0;
     if (fw > 0) rrect(x, by, fw < 4 ? 4 : fw, 4, 2, C_ACCENT_HI, 255);
     int py = y + THINK_HEAD_H + 8, ph = 2 * THINK_PAD + THINK_LINES * TEXT_LINE_H - 8;
@@ -1618,9 +1673,9 @@ static int msg_height(Msg* m, int typing) {
     Layout* L = layout_get(&m->lay, m->text, m->len, msg_layout_width(m->who), msg_palette(m->who), m->who == MSG_USER);
     if (m->who == MSG_USER) return L->height + 2 * BUB_PAD_Y;
     if (m->who == MSG_NOTE) return L->height + 8;
-    int h = L->height + (m->think_n ? think_label_h() : 0);
-    if (typing && h < 56) h = 56;
-    return h < 56 ? 56 : h;
+    int h = ai_head_h() + L->height + CARD_PAD + (m->think_n ? think_label_h() : 0);
+    if (typing && h < ai_head_h() + CARD_PAD + 32) h = ai_head_h() + CARD_PAD + 32;
+    return h;
 }
 
 static void draw_empty(const ChatView* v) {
@@ -1660,8 +1715,9 @@ void draw_toast(const char* text, float alpha, int y) {
     if (y <= 0) y = SCREEN_H - FOOTER_H - 36;
     text_alpha = (int)(255 * alpha);
     int tw = str_width(&font, text), w = tw + 64, h = 64, x = (SCREEN_W - w) / 2;
-    rrect(x, y - h, w, h, h / 2, 0x16335F, 245);
-    rrect_line(x, y - h, w, h, h / 2, 1, C_ACCENT_HI, 140);
+    rrect(x, y - h, w, h, h / 2, 0x171A20, 246);
+    rrect_line(x, y - h, w, h, h / 2, 1, C_LINE_HI, 255);
+    rrect(x + 18, y - h + 20, 3, h - 40, 2, C_ACCENT, 200);
     draw_str(&font, x + 32, y - h + (h - font.line) / 2, text, 0xFFFFFF);
     text_alpha = 255;
 }
@@ -1695,8 +1751,9 @@ void draw_chat(ChatView* v) {
                     int bw = L->max_w + 2 * BUB_PAD_X;
                     if (bw < 96) bw = 96;
                     int bx = COL_X + COL_W - bw;
-                    int rad[4] = {26, 26, 8, 26};
+                    int rad[4] = {22, 22, 6, 22};
                     rrect4(bx, y, bw, h, rad, 0, C_USER, 255);
+                    rrect4(bx, y, bw, h, rad, 1, C_USER_LINE, 255);
                     draw_layout(L, bx + BUB_PAD_X, y + BUB_PAD_Y);
                 } else if (m->who == MSG_NOTE) {
                     int nx = (SCREEN_W - L->max_w) / 2;
@@ -1704,14 +1761,24 @@ void draw_chat(ChatView* v) {
                     fill(nx + L->max_w + 30, y + h / 2, COL_X + COL_W - 120 - nx - L->max_w - 30, 1, C_LINE);
                     draw_layout(L, nx, y + 4);
                 } else {
-                    circle(COL_X + 28, y + 28, 28, 0, 0x10244A, 255);
-                    circle(COL_X + 28, y + 28, 28, 1.2f, C_LINE_HI, 255);
-                    if (logo_s.px) draw_image(&logo_s, COL_X + 28 - logo_s.w / 2, y + 28 - logo_s.h / 2, 255);
-                    int tx = COL_X + AI_INDENT, ty = y + 4;
+                    // A reply: a card on the surface, with the role line over the text and the model's figures on the
+                    // right of it. (The eye finds the boundary without a bubble or an avatar in the way.)
+                    int cx0 = COL_X - CARD_PAD, cw = COL_W + 2 * CARD_PAD;
+                    rrect(cx0, y, cw, h, 20, C_SURFACE, 255);
+                    rrect_line(cx0, y, cw, h, 20, 1, C_LINE, 255);
+                    int tx = COL_X, ty = y + ai_head_h();
                     if (v->thinking && i == n_msgs - 1) {   // still reasoning: its last lines instead
-                        draw_thinking(v, tx, ty, COL_W - AI_INDENT);
+                        draw_thinking(v, tx, ty - 6, COL_W);
                         y += h + MSG_GAP;
                         continue;
+                    }
+                    circle(COL_X + 5, y + CARD_PAD + 4, 4, 0, C_ACCENT, 255);
+                    draw_str(&font_small, COL_X + 18, y + CARD_PAD + 4 - font_small.line / 2, "Station AI", C_TEXT_DIM);
+                    if (v->generating && i == n_msgs - 1 && v->tok_per_s > 0) {
+                        char s[32];
+                        snprintf(s, sizeof(s), "%.1f tok/s", v->tok_per_s);
+                        draw_str(&font_small, COL_X + COL_W - str_width(&font_small, s),
+                                 y + CARD_PAD + 4 - font_small.line / 2, s, C_TEXT_MUTED);
                     }
                     if (m->think_n) draw_thought(m, tx, ty), ty += think_label_h();
                     draw_layout(L, tx, ty);
@@ -1741,8 +1808,8 @@ void draw_chat(ChatView* v) {
             int th = track * view / total;
             if (th < 40) th = 40;
             int ty = area_top + (track - th) * (max_scroll - v->scroll) / max_scroll;
-            rrect(x, area_top, 6, track, 3, 0x12244A, 255);
-            rrect(x, ty, 6, th, 3, C_ACCENT_HI, 200);
+            rrect(x, area_top, 6, track, 3, 0x14171C, 255);
+            rrect(x, ty, 6, th, 3, C_ACCENT, 150);
         }
     }
     draw_header(v);
@@ -1793,29 +1860,41 @@ static void brand_block(int y) {
 
 void draw_loading(float frac, const char* what) {
     draw_background();
-    brand_block(270);
-    int cx = SCREEN_W / 2, y = 600, w = 560;
-    rrect(cx - w / 2, y, w, 10, 5, 0x12264A, 255);
-    int fw = (int)(w * clamp01(frac));
+    brand_block(230);
+    // a card under the mark: what is happening, how far, and the bar itself with a mint head
+    int cx = SCREEN_W / 2, cw = 760, ch = 166, x = cx - cw / 2, y = 610;
+    rrect(x, y, cw, ch, 20, C_SURFACE, 255);
+    rrect_line(x, y, cw, ch, 20, 1, C_LINE, 255);
+    char pc[16];
+    int pct = (int)(clamp01(frac) * 100);
+    snprintf(pc, sizeof(pc), "%d %%", pct);
+    draw_str(&font, x + 32, y + 30, what, C_TEXT);
+    draw_str(&font, x + cw - 32 - str_width(&font, pc), y + 30, pc, C_ACCENT);
+    int bw = cw - 64, by = y + 96;
+    rrect(x + 32, by, bw, 8, 4, 0x21252C, 255);
+    int fw = (int)(bw * clamp01(frac));
     if (fw > 0) {
-        rrect(cx - w / 2, y, fw < 10 ? 10 : fw, 10, 5, C_ACCENT, 255);
-        rrect(cx - w / 2 + (fw > 40 ? fw - 40 : 0), y, fw > 40 ? 40 : fw, 10, 5, C_ACCENT_HI, 200);
+        rrect(x + 32, by, fw < 8 ? 8 : fw, 8, 4, C_ACCENT, 255);
+        if (fw > 24) rrect(x + 32 + fw - 16, by, 16, 8, 4, C_ACCENT_HI, 120);
     }
-    char line_[160];
-    snprintf(line_, sizeof(line_), "%s…  %d %%", what, (int)(clamp01(frac) * 100));
-    draw_center(&font_small, cx, y + 30, line_, C_TEXT_DIM);
-    draw_center(&font_small, cx, SCREEN_H - 90, "Ornith-1.5  ·  Parakeet  ·  Chatterbox", C_TEXT_MUTED);
+    draw_str(&font_small, x + 32, by + 30, "Ornith-1.5  ·  Parakeet  ·  Chatterbox", C_TEXT_MUTED);
 }
 
 void draw_error(const char* what) {
     draw_background();
-    brand_block(220);
-    int cx = SCREEN_W / 2, y = 560;
-    draw_center(&font_big, cx, y, tr(S_ERROR_TITLE), C_RED);
+    brand_block(200);
+    int cx = SCREEN_W / 2;
     static Layout* L;
-    Layout* l = layout_get(&L, what, strlen(what), 1200, &PAL_AI, 1);
-    draw_layout(l, cx - l->max_w / 2, y + font_big.line + 20);
-    draw_center(&font_small, cx, y + font_big.line + 40 + l->height, tr(S_ERROR_HINT), C_TEXT_MUTED);
+    Layout* l = layout_get(&L, what, strlen(what), 1120, &PAL_AI, 1);
+    int cw = l->max_w + 96, ch = 96 + l->height + 40, x = cx - cw / 2, y = 560;
+    if (cw < 720) cw = 720, x = cx - cw / 2;
+    rrect(x, y, cw, ch, 20, C_SURFACE, 255);
+    rrect_line(x, y, cw, ch, 20, 1, C_LINE, 255);
+    rrect(x + 1, y + 18, 3, ch - 36, 2, C_RED, 200);   // the same hairline of colour a code block has
+    circle(x + 40, y + 44, 7, 0, C_RED, 255);
+    draw_str(&font_big, x + 62, y + 44 - font_big.line / 2, tr(S_ERROR_TITLE), 0xFFFFFF);
+    draw_layout(l, x + 48, y + 88);
+    draw_str(&font_small, x + 48, y + ch - 34, tr(S_ERROR_HINT), C_TEXT_MUTED);
 }
 
 // ---- on-screen keyboard ----------------------------------------------------------------------------------------
@@ -1978,8 +2057,9 @@ int kb_press(Kb* kb, char* out, int max) {
 #define PANEL_Y (SCREEN_H - FOOTER_H - PANEL_H)
 
 static void draw_field(int x, int y, int w, const char* text, double time) {
-    rrect(x, y, w, FIELD_H, 20, 0x050E22, 255);
-    rrect_line(x, y, w, FIELD_H, 20, 2, C_ACCENT_HI, 170);
+    rrect(x, y, w, FIELD_H, 20, 0x0E1014, 255);
+    rrect_line(x, y, w, FIELD_H, 20, 1, C_LINE_HI, 255);
+    rrect_line(x, y, w, FIELD_H, 20, 2, C_ACCENT, 90);
     int pad = 28, inner_w = w - 2 * pad;
     int caret_x, caret_y, caret_h;
     int blink = fmod(time, 1.0) < 0.6;
@@ -2026,9 +2106,9 @@ static void kb_draw_key(const Kb* kb, int r, int k, int x0, int y0, int sel) {
     int on = (!strcmp(key, "⇧") && kb->shift) || (kb->dead && !strcmp(key, kb->dead)) ||
              (kb->page > 0 && !strncmp(key, "[t", 2) && key[2] - '0' == kb->page - 1);
     if (sel) {
-        rrect(x - 7, ky - 7, w + 14, KEY_H + 14, 20, C_ACCENT_HI, 40);
-        rrect(x - 3, ky - 3, w + 6, KEY_H + 6, 16, C_ACCENT_HI, 90);
-        rrect(x, ky, w, KEY_H, 13, 0x1C86EA, 255);
+        rrect(x - 7, ky - 7, w + 14, KEY_H + 14, 20, C_ACCENT, 40);
+        rrect(x - 3, ky - 3, w + 6, KEY_H + 6, 16, C_ACCENT, 90);
+        rrect(x, ky, w, KEY_H, 13, C_ACCENT, 255);
     } else {
         rrect(x, ky, w, KEY_H, 13, enter ? C_ACCENT : special ? C_KEY_SPECIAL : C_KEY, 255);
         if (on) rrect_line(x, ky, w, KEY_H, 13, 2, C_ACCENT_HI, 255);
@@ -2037,7 +2117,7 @@ static void kb_draw_key(const Kb* kb, int r, int k, int x0, int y0, int sel) {
     const Font* f;
     key_label(kb, key, label, sizeof(label), &f);
     int tw = str_width(f, label);
-    uint32_t col = sel || enter ? 0xFFFFFF : on ? C_ACCENT_HI : special ? C_TEXT_DIM : 0xEEF4FF;
+    uint32_t col = sel || enter ? C_ACCENT_INK : on ? C_ACCENT : special ? C_TEXT_DIM : C_TEXT;
     draw_str(f, x + (w - tw) / 2, ky + (KEY_H - f->line) / 2, label, col);
 }
 
