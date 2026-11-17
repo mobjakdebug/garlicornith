@@ -203,6 +203,12 @@ in brightness instead of drawing boxes around everything (`0x101216`, `0x171A20`
   selected one in solid mint and ink text, the dictation as a bar of levels, and start-up as a 760-pixel card that says
   what is loading, how far it is, and which three models this build has.
 
+![the conversation](docs/ui/chat.png)
+
+Four renders, as the console draws them (`docs/ui/`): [the conversation](docs/ui/chat.png),
+[a picture from the image endpoint](docs/ui/picture.png), [the keyboard](docs/ui/keyboard.png),
+[the start-up card](docs/ui/loading.png).
+
 The screens are drawn by `chat/ui.c` only, so they can be rendered on a PC, pixel for pixel, without the console:
 
 ```sh
@@ -210,6 +216,9 @@ gcc -D_WIN32 -O2 -I chat -o build/ui_preview pc/ui_preview.c chat/ui.c chat/png.
 build/ui_preview shot.png chat chat/assets            # empty, thinking, generating, loading, error, keyboard, voice,
                                                       # picture, top
 ```
+
+(The writer stores the PNG uncompressed — 1920×1080 comes out at 6 MB — so the four above were run through zlib once
+before being added here.)
 
 ## The API
 
@@ -286,18 +295,22 @@ message that says how to write it, so a client is never left guessing.
 
 ## What the last run produced
 
-Run [44144634898](https://github.com/mobjakdebug/garlicornith/actions/runs/44144634898) (branch
-`arena/89d02c3e-garlicornith`, commit `2b37727`, all three jobs green — the first one with the variable context, the
-Station AI name and the on-console downloader):
+Run [44155677873](https://github.com/mobjakdebug/garlicornith/actions/runs/44155677873) (branch
+`arena/89d02c3e-garlicornith`, commit `542e464`, all three jobs green — this one with the new interface, the extra API
+endpoints and the image pipeline; the previous full run was
+[44144634898](https://github.com/mobjakdebug/garlicornith/actions/runs/44144634898)):
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   99d0325b…9b0d7231df
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   4eaad00f…96851439
 models/ornith-1.5-9b-q4s.bin                          4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                            212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                     11 312   a6487233…4f2f24b15
 chat/assets_9b/mtp.idx                                          588   32a083db…29694eb
 chat/assets_9b/kernels.bin                                    419 052   (rebuilt from shaders/ in the job)
 ```
+
+The compile job also runs the three host suites on every run — the API's protocol (72 checks), its jobs on a mock
+engine (165) and the PNG reader (35) — with gcc and the sanitizers, before the PS4 toolchain is even fetched.
 
 The weights are the same bytes in every build (they are a pure function of the GGUF and the converter);
 and the layout checks of that run, against Hugging Face's `ornith-ai/Ornith-1.5-9B`: every one of the eighteen
