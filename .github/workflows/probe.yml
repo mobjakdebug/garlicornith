@@ -78,6 +78,22 @@ jobs:
             && echo "zig cc: x86_64-freebsd-none works" | tee -a probe.txt
           ./toolchain/zig/zig ld.lld --version 2>&1 | tee -a probe.txt || true
           ./toolchain/OpenOrbis/PS4Toolchain/bin/linux/PkgTool.Core 2>&1 | head -5 | tee -a probe.txt || true
+          OO=toolchain/OpenOrbis/PS4Toolchain
+          echo "--- network and hash libraries ---" | tee -a probe.txt
+          ls $OO/lib | grep -iE "http|ssl|netctl|sha|crypto|json|websock" | tee -a probe.txt || echo "(none)" | tee -a probe.txt
+          echo "--- their headers ---" | tee -a probe.txt
+          ls $OO/include | grep -iE "http|ssl|netctl|sha|crypto|json" | tee -a probe.txt || echo "(none)" | tee -a probe.txt
+          echo "--- sceHttp.h / sceSsl.h, if they are there ---" | tee -a probe.txt
+          for h in sceHttp.h sceSsl.h sceNetCtl.h sceNet.h; do
+            printf '#include <%s>\nint f(void){return 0;}\n' "$h" > /tmp/h.c
+            [ -e "$OO/include/$h" ] && ./toolchain/zig/zig cc -target x86_64-freebsd-none -nostdinc -isystem $OO/include \
+              -O2 -c /tmp/h.c -o /tmp/h.o && echo "$h: compiles" | tee -a probe.txt || echo "$h: no" | tee -a probe.txt
+          done
+          echo "--- the GPU kernels, rebuilt here from shaders/ ---" | tee -a probe.txt
+          sed -i "s|ZIG / \"zig.exe\"|ZIG / \"zig\"|" pc/gpu.py 2>/dev/null || true
+          python pc/export_kernels_9b.py 2>&1 | tail -5 | tee -a probe.txt || true
+          git status --short chat/assets_9b | tee -a probe.txt
+          git diff --stat chat/assets_9b | tee -a probe.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
