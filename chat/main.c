@@ -1974,9 +1974,8 @@ int main(void) {
         if (dl_run() && dl_model_dir()) eng_assets = dl_model_dir();
     }
     if (engine_init(&eng, eng_assets, loading, (void*)tr(S_LOADING_MODEL))) show_error(eng.error);
-    say("language model ready; GPU memory used %u of %u MiB; context cache %s, %u tokens (%u while voice mode "
-        "borrows %u MiB)", (unsigned)(eng.next >> 20), (unsigned)(eng.mem_size >> 20),
-        eng.tq ? "TurboQuant 4-bit" : "fp16 k + int8 v", eng.max_seq, eng.lend_ctx, (unsigned)(eng.kv_split >> 20));
+    say("language model ready; GPU memory used %u of %u MiB", (unsigned)(eng.next >> 20),
+        (unsigned)(eng.mem_size >> 20));
     if (t3_init(&eng, ASSETS) == 0) {   // text to speech, first half (Chatterbox T3)
         say("T3 ready; GPU memory used %u of %u MiB", (unsigned)(eng.next >> 20), (unsigned)(eng.mem_size >> 20));
     } else {
@@ -1987,6 +1986,11 @@ int main(void) {
         say("speech to text ready: up to %u s of audio", eng.asr.max_frames * 8 / 100);
     else
         say("speech to text not available (missing or no GPU memory left)");
+    if (engine_context_init(&eng))   // the context gets what the weights and the voices left (engine.h)
+        show_error(eng.error);
+    say("context cache %s: %u tokens in %u blocks of 8192 (%u while voice mode borrows %u MiB)",
+        eng.tq ? "TurboQuant 4-bit" : "fp16 k + int8 v", eng.max_seq, eng.tq ? eng.tq_blocks : 1, eng.lend_ctx,
+        (unsigned)(eng.kv_split >> 20));
     size_t flex0 = 0;   // system memory left (the 9B's dictation weights live there; Python borrows them)
     ((int32_t(*)(size_t*))sceKernelAvailableFlexibleMemorySize)(&flex0);
     say("GPU memory used: %u of %u MiB; system RAM free: %u MiB", (unsigned)(eng.next >> 20),

@@ -274,6 +274,10 @@ int s3g_step(Engine* e, float* out, int max);
 // lend_ctx (max_seq / 2; with the TurboQuant cache and 8K of context, kv_hi is spare memory and the context stays
 // max_seq), so positions past it must not be in use. engine_kv_return gives it back (contents are not kept).
 uint64_t engine_kv_lend(Engine* e, uint64_t* size);
+// The context — the RoPE table, the partial-attention scratch and, with TurboQuant, the KV cache (as many blocks of
+// 8192 positions as the GPU's memory leaves) — is taken here, after engine_init and after the voice and dictation
+// models have theirs, so the console's memory decides the context instead of a constant. 0 = ok.
+int engine_context_init(Engine* e);
 void engine_kv_return(Engine* e);
 // The conversation needs the blocks the weights have: they go (whichever library loaded them must load them again),
 // and the context is max_seq again. 1 if something was given back.

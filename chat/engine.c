@@ -330,8 +330,9 @@ static int load_index(Engine* e, const char* dir) {
 
 // ---- the context: as long as the console's memory makes it ------------------------------------------------------
 // With TurboQuant the KV cache is blocks of 8192 positions (66 MiB of them for this model's eight full-attention
-// layers), and the context is as many blocks as fit. Everything else — the weights, the scratch, the embeddings'
-// row cache — is already allocated when this runs, so what is left is the real answer; a token count in
+// layers), and the context is as many blocks as fit. The app calls this once everything else that lives in the
+// GPU's memory has been allocated — the weights, the scratch, the embeddings' row cache, and the voice and
+// dictation models, which come after engine_init — so what is left is the real answer; a token count in
 // /data/station_ctx.txt asks for less. The RoPE table (cos of the first half of the dims, then sin, per position)
 // and the partial-attention scratch follow the context, and are taken here for the same reason.
 #define TQ_BLOCKS_MAX 32          // 256K positions: the ceiling, however much memory the console has
@@ -355,7 +356,7 @@ static uint32_t ctx_want(void) {
     return any ? n : 0;
 }
 
-static int context_alloc(Engine* e) {
+int engine_context_init(Engine* e) {
     uint32_t half = e->rope_dim / 2;
     if (!e->tq) {   // the fp16 cache (attn.h): its size is the model's own max_seq, so its table and scratch are too
         e->rope = gpu_alloc(e, (uint64_t)e->max_seq * e->rope_dim * 4);
@@ -618,7 +619,6 @@ int engine_init(Engine* e, const char* dir, ProgressFn progress, void* user) {
         }
         for (int i = 0; i < ROW_CACHE; i++) e->row_tag[i] = -1;
     }
-    if (context_alloc(e)) return -1;   // RoPE, the attention scratch and the KV cache: what is left of the memory
     mm_tune(e);   // the batched prompt's product kernels, fastest per shape
     swar_tune(e);
     engine_reset(e);
