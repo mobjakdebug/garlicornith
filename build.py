@@ -72,27 +72,8 @@ def pkgtool(*args):
 
 
 def pkg_build(outdir):
-    """`pkg_build` is the one PkgTool.Core command that needs libssl 1.1, and on a distribution that ships
-    OpenSSL 3 the .NET host the tool unpacks itself into does not manage to use the copy pc/ci_toolchain.py
-    fetches. When that happens and Docker is here, do that one command inside Ubuntu 20.04, whose system
-    libraries are the ones PkgTool.Core was built against."""
-    try:
-        return pkgtool("pkg_build", "pkg.gp4", str(outdir))
-    except subprocess.CalledProcessError:
-        if WIN or not shutil.which("docker"):
-            raise
-        # the same absolute paths inside the container (OpenOrbis' bin/linux is a symlink into the toolchain, so
-        # nothing may move)
-        print("> the same command, inside ubuntu:20.04 (its own libssl 1.1)", flush=True)
-        # ubuntu:20.04's own libssl 1.1 (the base image has none, so it is installed here) and its own glibc.
-        # It has to run as root for apt; the package is handed back to this user afterwards.
-        run(["docker", "run", "--rm", "-v", f"{ROOT}:{ROOT}", "-w", str(PKGDIR), "-e", "DOTNET_ROLL_FORWARD=Major",
-             "-e", "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1", "ubuntu:20.04", "bash", "-c",
-             "apt-get -qq update && apt-get -qq install -y libssl1.1 >/dev/null && exec \"$0\" \"$@\"",
-             str(Path(BIN / "PkgTool.Core").resolve()), "pkg_build", "pkg.gp4", str(Path(outdir).resolve())],
-            env=ENV)
-        run(["docker", "run", "--rm", "-v", f"{ROOT}:{ROOT}", "ubuntu:20.04", "chown", "-R",
-             f"{os.getuid()}:{os.getgid()}", str(Path(outdir).resolve())], env=ENV)
+    """`pkg_build` is the one PkgTool.Core command that needs libssl 1.1 (see pc/ci_toolchain.py)."""
+    return pkgtool("pkg_build", "pkg.gp4", str(outdir))
 
 
 def ps4_ftp(timeout=30):

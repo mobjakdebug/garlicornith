@@ -331,9 +331,15 @@ Two things the Linux runners needed, both in the scripts:
 
 * **`PkgTool.Core` is a self-contained .NET Core 3.0 binary**, so its crypto layer looks for `libssl.so.1.1`, which
   no distribution newer than Ubuntu 22.04 ships (they have 3.x). Its `sfo_*` commands work without it; `pkg_build`
-  dies with `SIGABRT` and *no message at all*. `pc/ci_toolchain.py` takes the library out of a distribution package
-  into `toolchain/libssl1.1/`, and `build.py` puts it in `LD_LIBRARY_PATH`; `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`
-  covers the other half of the same problem (no ICU).
+  dies with `SIGABRT` and *no message at all*. `pc/ci_toolchain.py` fetches a matching `libssl`/`libcrypto` pair (they
+  have to come from one build: a mixed pair fails on `undefined symbol: SSL_state`), checks that the pair loads the
+  way the tool loads it, and puts it in `/usr/lib/x86_64-linux-gnu`, because the .NET host PkgTool unpacks itself into
+  drops `LD_LIBRARY_PATH` and the loader then searches only the distribution's own paths.
+  `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` covers the other half of the same problem (no ICU).
+* **A four-gigabyte package hits a LibOrbisPkg bug** ([#64](https://github.com/maxton/LibOrbisPkg/issues/64)): the
+  PlayGo chunk-hash table is sized from an estimate aligned to 512 KiB and comes out a chunk or two short. So
+  `build_chat.py` keeps a small `assets/pad.bin` and retries the package with a few different pads until the total
+  lands where the estimate covers it. A small package (the slim one) never needs it.
 * The logs are pushed back with `permissions: contents: write`; without it the push is refused and the step still
   says "success".
 
