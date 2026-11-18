@@ -1,15 +1,17 @@
 <div align="center">
 
+<img src="docs/ui/mark.png" alt="Station AI" width="104">
+
 # Station AI
 
 **A nine-billion-parameter language model running on a PlayStation 4's own GPU — offline, from the couch,
 with an OpenAI-compatible server on the same console.**
 
 [![build-station-ai-ps4](https://github.com/mobjakdebug/garlicornith/actions/workflows/build.yml/badge.svg)](https://github.com/mobjakdebug/garlicornith/actions/workflows/build.yml)
-![version](https://img.shields.io/badge/version-1.22-6EE7A8)
-![model](https://img.shields.io/badge/model-Ornith--1.5--9B-6EE7A8)
-![params](https://img.shields.io/badge/weights-3.8%20GiB%20on%20the%20GPU-101216)
-![offline](https://img.shields.io/badge/internet-not%20needed-101216)
+![version](https://img.shields.io/badge/version-1.23-2C5AE2)
+![model](https://img.shields.io/badge/model-Ornith--1.5--9B-2C5AE2)
+![params](https://img.shields.io/badge/weights-3.8%20GiB%20on%20the%20GPU-1C1F26)
+![offline](https://img.shields.io/badge/internet-not%20needed-1C1F26)
 
 <img src="docs/ui/chat.png" alt="the conversation" width="900">
 
@@ -329,28 +331,45 @@ Two things the Linux runners needed, both in the scripts:
 
 * **`PkgTool.Core` is a self-contained .NET Core 3.0 binary**, so its crypto layer looks for `libssl.so.1.1`, which
   no distribution newer than Ubuntu 22.04 ships (they have 3.x). Its `sfo_*` commands work without it; `pkg_build`
-  dies with `SIGABRT` and *no message at all*. `pc/ci_toolchain.py` takes the library out of a distribution package
-  into `toolchain/libssl1.1/`, and `build.py` puts it in `LD_LIBRARY_PATH`; `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`
-  covers the other half of the same problem (no ICU).
+  dies with `SIGABRT` and *no message at all*. `pc/ci_toolchain.py` fetches a matching `libssl`/`libcrypto` pair (they
+  have to come from one build: a mixed pair fails on `undefined symbol: SSL_state`), checks that the pair loads the
+  way the tool loads it, and puts it in `/usr/lib/x86_64-linux-gnu`, because the .NET host PkgTool unpacks itself into
+  drops `LD_LIBRARY_PATH` and the loader then searches only the distribution's own paths.
+  `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` covers the other half of the same problem (no ICU).
+* **A four-gigabyte package hits a LibOrbisPkg bug** ([#64](https://github.com/maxton/LibOrbisPkg/issues/64)): the
+  PlayGo chunk-hash table is sized from an estimate, and at this size it comes out a chunk or two short, so
+  `pkg_build` stops with *"Playgo Chunk hash file was not allocated enough space"*. Padding the package to a
+  different alignment does not help — the estimate is short by a fixed amount, and both sizes move together. So
+  `pc/ci_pkgtool.py` builds **PkgTool from LibOrbisPkg's own source** (the `*.Core` projects in that repository),
+  patched to reserve a megabyte more for that table (the tool then shrinks it back to its real length), and against
+  **.NET 8**, which also removes the OpenSSL 1.1 dependency for that command. `build.py` uses the result for
+  `pkg_build` when it is there and the bundled `PkgTool.Core` otherwise; the app-only package builds either way.
 * The logs are pushed back with `permissions: contents: write`; without it the push is refused and the step still
   says "success".
 
 ## What the last run produced
 
-Run [44271426387](https://github.com/mobjakdebug/garlicornith/actions/runs/44271426387) (branch
-`arena/89d02c3e-garlicornith`, commit `bbe749a`, all three jobs green — the run that first built **both** packages;
-the run before it, [44173541362](https://github.com/mobjakdebug/garlicornith/actions/runs/44173541362), was the one
-with the panel, the extra API endpoints and the image pipeline):
+Run [44308993270](https://github.com/mobjakdebug/garlicornith/actions/runs/44308993270) — the run with the new mark,
+the icon and the splash, 1.23, and a `pkg_build` that can size a five-gigabyte package:
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg          4 898 816 000   77579e51…c678c34515
-build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg                     41 156 608   77c79ad7…d87e52ae44
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg          4 900 388 864   7ac7a105…8d64b8b8e
+build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg                     42 205 184   d8556373…9e5495797c
 models/ornith-1.5-9b-q4s.bin                                 4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                                   212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                            11 312   a6487233…4f2f24b15
 chat/assets_9b/mtp.idx                                                 588   32a083db…29694eb
 chat/assets_9b/kernels.bin                                        419 052   (rebuilt from shaders/ in the job)
 ```
+
+The two packages are stamped with the build's time, so their sha256 changes from run to run; the weights and the
+indexes do not. The all-in-one package carries a megabyte of padding that the patched `pkg_build` reserves for the
+PlayGo table (see the build notes), which is why both packages are a megabyte larger than the ones before.
+
+The run before it, [44271426387](https://github.com/mobjakdebug/garlicornith/actions/runs/44271426387) (commit
+`bbe749a`), was the last one to build both packages with the bundled tool: `4 898 816 000` and `41 156 608`, the
+same weights. [44173541362](https://github.com/mobjakdebug/garlicornith/actions/runs/44173541362) was the one with
+the panel, the extra API endpoints and the image pipeline.
 
 (The two packages are stamped with the build's time, so their sha256 changes from run to run; the weights and the
 indexes do not.)
@@ -470,6 +489,8 @@ speculative decoding report themselves unavailable instead of taking the context
 | `chat/ui.c` | the whole interface: theme, header, cards, markdown tables and code panels, keyboard, voice sheet, loading and error cards, the panel |
 | `chat/panel.inc` | the panel itself (OPTIONS): five sections — API, images, model, system, about — and the file each one writes |
 | `pc/ui_preview.c` | the same screens rendered on a PC to a PNG (`chat/ui.c` only), so the look can be checked without the console |
+| `pc/ci_pkgtool.py` | builds `PkgTool` from LibOrbisPkg's source, on .NET 8 and with the PlayGo estimate fixed — the bundled one cannot package five gigabytes |
+| `pc/make_brand.py` | the mark, the icon and the splash, drawn as geometry from the logo artwork (`chat/assets/logo.bin`, `chat/sce_sys/`); the wordmark is set in `pc/brand`'s Inter SemiBold (SIL OFL) |
 | `chat/api.c`, `chat/api_proto.c`, `chat/api_run.inc` | the OpenAI-compatible server: chat, completions, responses, models, SSE, the OpenAPI document |
 | `chat/dl.c` | the model downloader: Hugging Face's file list, `libSceHttp`, resume with `Range`, `/data/models` |
 | `chat/imgen.c`, `chat/img.c`, `chat/png.c` | image models through the API: the backend's answer, a PNG reader (inflate) and a PNG writer, by hand |
@@ -480,5 +501,6 @@ speculative decoding report themselves unavailable instead of taking the context
 
 Garlic LLM is © Leonardo Alegría, under the licence in [`LICENSE`](LICENSE) (see [`CREDITS.md`](CREDITS.md) for the
 fonts, Twemoji, MicroPython and the models it ships). Ornith-1.5-9B is MIT-licensed. This repository adds the GGUF
-converter, the layout checks, the panel, the downloader and the CI; the app, the kernels and the build scripts are
-upstream's.
+converter, the layout checks, the panel, the downloader, the CI and the Station AI mark — drawn as geometry by
+`pc/make_brand.py`, its wordmark set in Inter SemiBold (SIL OFL, `pc/brand`). The app, the kernels and the build
+scripts are upstream's.

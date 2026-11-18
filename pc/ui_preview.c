@@ -58,36 +58,35 @@ static void shot(const char* path) {
 
 static void demo_messages(void) {
     msgs_clear();
+    const char* q = "Explain what a transformer is, then give me a Python snippet that counts the words in a text. "
+                    "And compare the three architectures in a table.";
     Msg* m = msg_new(MSG_USER);
-    msg_append(m, "Explícame qué es un transformer y luego dame un ejemplo de código en Python que cuente "
-                  "palabras en un texto. También compara las tres arquitecturas en una tabla.",
-              strlen("Explícame qué es un transformer y luego dame un ejemplo de código en Python que cuente "
-                     "palabras en un texto. También compara las tres arquitecturas en una tabla."));
+    msg_append(m, q, strlen(q));
     m = msg_new(MSG_AI);
     const char* a =
-        "Un **transformer** es una red que procesa una secuencia entera a la vez: cada token mira a todos los demás "
-        "con *atención*, en vez de recorrerla en orden como una RNN.\n\n"
-        "## Cómo funciona\n\n"
-        "1. Cada token se convierte en un vector.\n"
-        "2. La atención mezcla esos vectores según lo que se parecen: `softmax(QK^T / sqrt(d)) V`.\n"
-        "3. Una red densa (MLP) transforma cada posición por separado.\n"
-        "4. Se repite por capas, y la salida predice el siguiente token.\n\n"
+        "A **transformer** is a network that processes a whole sequence at once: every token looks at all the others "
+        "through *attention*, instead of walking the sequence in order like an RNN.\n\n"
+        "## How it works\n\n"
+        "1. Every token becomes a vector.\n"
+        "2. Attention mixes those vectors by how alike they are: `softmax(QK^T / sqrt(d)) V`.\n"
+        "3. A dense network (MLP) transforms each position on its own.\n"
+        "4. The whole thing repeats layer by layer, and the output predicts the next token.\n\n"
         "```python\n"
         "from collections import Counter\n\n"
-        "def palabras(texto):\n"
-        "    return Counter(texto.lower().split())\n\n"
-        "print(palabras(\"hola hola mundo\").most_common(2))\n"
+        "def words(text):\n"
+        "    return Counter(text.lower().split())\n\n"
+        "print(words(\"hello hello world\").most_common(2))\n"
         "```\n\n"
-        "| Modelo | Ventaja | Coste |\n"
+        "| Model | Strength | Cost |\n"
         "| --- | --- | --- |\n"
-        "| Transformer | calidad y paralelismo | memoria cuadrática |\n"
-        "| RNN | secuencias largas baratas | lenta, se olvida |\n"
-        "| CNN | local y rápida | poca visión global |\n\n"
-        "> En esta consola la atención usa la GPU de la PS4, con la caché en 4 bits.";
+        "| Transformer | quality and parallelism | quadratic memory |\n"
+        "| RNN | cheap on long sequences | slow, forgets |\n"
+        "| CNN | local and fast | little global view |\n\n"
+        "> On this console attention runs on the PS4's GPU, with the cache in 4 bits.";
     msg_append(m, a, strlen(a));
     m = msg_new(MSG_NOTE);
-    msg_append(m, "Contexto lleno: he empezado una conversación nueva.",
-              strlen("Contexto lleno: he empezado una conversación nueva."));
+    const char* n = "Context full: a new conversation has been started.";
+    msg_append(m, n, strlen(n));
 }
 
 int main(int argc, char** argv) {
@@ -129,14 +128,14 @@ int main(int argc, char** argv) {
         v.tok_per_s = 12.4;
         draw_chat(&v);
     } else if (!strcmp(screen, "loading")) {
-        draw_loading(0.42f, "Cargando el modelo (2.1 de 4.6 GB)…");
+        draw_loading(0.42f, "Loading the model (2.1 of 4.6 GB)…");
     } else if (!strcmp(screen, "error")) {
         draw_error("No se pudo cargar model.idx: revisa /data/models.");
     } else if (!strcmp(screen, "keyboard")) {
         demo_messages();
         Kb kb;
-        kb_init(&kb, KB_ES);
-        draw_keyboard(&kb, "Una pregunta sobre la atención multi-cabeza", 1.0);
+        kb_init(&kb, KB_EN);   // (the screenshots are in English)
+        draw_keyboard(&kb, "A question about multi-head attention", 1.0);
     } else if (!strcmp(screen, "voice")) {
         float levels[24];
         for (int i = 0; i < 24; i++) levels[i] = 0.2f + 0.8f * (float)((i * 37) % 11) / 11.0f;
@@ -196,13 +195,13 @@ int main(int argc, char** argv) {
             pv.tip[1] = "/data/garlic_api_key.txt    the key, if one is set";
             pv.tip[2] = "/data/garlic_think.txt      the reasoning cap";
         } else {
-            pv.rows[0] = (PanelRow){S_P_VERSION, "1.22", PANEL_VALUE, 0};
+            pv.rows[0] = (PanelRow){S_P_VERSION, "1.23", PANEL_VALUE, 0};
             pv.rows[1] = (PanelRow){S_P_ENGINE, "Ornith-1.5-9B · q4s", PANEL_VALUE, 0};
             pv.rows[2] = (PanelRow){S_P_KERNELS, "419 052 B", PANEL_VALUE, 0};
             pv.rows[3] = (PanelRow){S_P_MEM, "1 812 MiB", PANEL_VALUE, 0};
             pv.rows[4] = (PanelRow){S_P_REQUESTS, "37", PANEL_VALUE, 0};
             pv.n_rows = 5;
-            pv.tip[0] = "Station AI \xc2\xb7 1.22";
+            pv.tip[0] = "Station AI \xc2\xb7 1.23";
             pv.tip[1] = "github.com/mobjakdebug/garlicornith";
             pv.tip[2] = "PS4 payload \xc2\xb7 100% local";
         }
@@ -229,7 +228,7 @@ int main(int argc, char** argv) {
                 p[0] = (uint8_t)r, p[1] = (uint8_t)g, p[2] = (uint8_t)b;
             }
         Img im = {W, H, rgb};
-        ui_image_add(&im, "Un atardecer sobre las colinas, con el sol bajo y el cielo en degradado.", "/data/station-ai/images/img-3.png");
+        ui_image_add(&im, "A sunset over the hills, the sun low and the sky shading down.", "/data/station-ai/images/img-3.png");
         draw_chat(&v);
     } else if (!strcmp(screen, "top")) {
         demo_messages();

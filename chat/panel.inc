@@ -167,7 +167,7 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         pv->tip[1] = "/data/garlic_api_key.txt    the key, if one is set";
         pv->tip[2] = "/data/garlic_think.txt      the reasoning cap";
     } else {
-        panel_row(pv, S_P_VERSION, "1.22", PANEL_VALUE, 0);
+        panel_row(pv, S_P_VERSION, "1.23", PANEL_VALUE, 0);
         snprintf(v, sizeof(v), "%s · %d tokens", MODEL_NAME, (int)eng.ctx_limit);
         panel_row(pv, S_P_ENGINE, v, PANEL_VALUE, 0);
         size_t flex = 0;
@@ -176,7 +176,7 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         panel_row(pv, S_P_MEM, v, PANEL_VALUE, 0);
         snprintf(v, sizeof(v), "%u", api_requests());
         panel_row(pv, S_P_REQUESTS, v, PANEL_VALUE, 0);
-        pv->tip[0] = "Station AI \xc2\xb7 1.22";
+        pv->tip[0] = "Station AI \xc2\xb7 1.23";
         pv->tip[1] = "github.com/mobjakdebug/garlicornith";
         pv->tip[2] = "PS4 payload \xc2\xb7 100% local";
     }

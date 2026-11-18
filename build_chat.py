@@ -29,7 +29,7 @@ if "--4b" in sys.argv:
     TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI 4B", "1.17", "PSAI00002", "02"
     REMOTE = "/data/pkg/Station-AI-4B.pkg"
 else:
-    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.22", "PSAI00003", "03"
+    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.23", "PSAI00003", "03"
     REMOTE = "/data/pkg/Station-AI.pkg"
 FULL = "--full" in sys.argv
 SLIM = "--slim" in sys.argv
@@ -141,12 +141,15 @@ def main():
     files += [p.relative_to(PKGDIR).as_posix() for p in sorted((PKGDIR / "assets").rglob("*")) if p.is_file()]
     if FULL:
         files += [f"models/{name}" for name in models]
+    pkgout = OUT / "slim" if SLIM else OUT   # (its own folder: a slim build next to a full one keeps both)
+    pkgout.mkdir(parents=True, exist_ok=True)
+    if not b.WIN and not (b.SSL11 / "libssl.so.1.1").exists():
+        print("warning: no libssl.so.1.1 in", b.SSL11, "-> PkgTool.Core will abort unless the system has one")
+        print("         (run python pc/ci_toolchain.py to fetch it)")
     b.run([b.BIN / f"create-gp4{b.EXE}", "-out", "pkg.gp4", f"--content-id={CONTENT_ID}", "--files", " ".join(files)],
           cwd=PKGDIR)
     fix_gp4_dirs()
-    pkgout = OUT / "slim" if SLIM else OUT   # (its own folder: a slim build next to a full one keeps both)
-    pkgout.mkdir(parents=True, exist_ok=True)
-    b.pkgtool("pkg_build", "pkg.gp4", str(pkgout))
+    b.pkg_build(pkgout)
     pkg = pkgout / f"{CONTENT_ID}.pkg"
     if SLIM:   # the same app without the weights: it downloads a model on the console instead
         pkg = pkg.with_name(f"{CONTENT_ID}-slim.pkg")

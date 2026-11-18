@@ -66,7 +66,9 @@ jobs:
 
       - name: tools (OpenOrbis + Zig)
         timeout-minutes: 20
-        run: python pc/ci_toolchain.py
+        run: |
+          set -o pipefail
+          python pc/ci_toolchain.py 2>&1 | tee toolchain.txt
 
       - name: the GPU kernels, from shaders/ (the C code has to agree with them)
         run: |
@@ -121,7 +123,7 @@ jobs:
       - name: free disk space
         run: |
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
                       /usr/local/share/boost /usr/local/share/powershell /opt/microsoft /usr/lib/R \
                       /usr/local/lib/node_modules /opt/az /usr/local/aws-cli
           sudo apt-get clean
@@ -218,7 +220,7 @@ jobs:
 
       - name: free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
                       /usr/local/share/boost /usr/local/share/powershell /opt/microsoft /usr/lib/R \
                       /usr/local/lib/node_modules /opt/az /usr/local/aws-cli
           sudo apt-get clean
@@ -231,30 +233,39 @@ jobs:
 
       - name: tools (OpenOrbis + Zig)
         timeout-minutes: 20
-        run: python pc/ci_toolchain.py
+        run: |
+          set -o pipefail
+          python pc/ci_toolchain.py 2>&1 | tee toolchain.txt
 
       - name: the GPU kernels, from shaders/ (the package carries them)
         run: |
           set -o pipefail
           python pc/export_kernels_9b.py 2>&1 | tail -20
 
-      - name: build the all-in-one package
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # The bundled PkgTool.Core cannot size the PlayGo table on a package of several GiB (LibOrbisPkg#64); this
+      # builds the same tool from LibOrbisPkg's source, patched and on .NET 8 (so it needs no libssl 1.1 either).
+      # When it cannot be built the bundled one is used, and then only the app-only package builds.
+      - name: a PkgTool with the PlayGo estimate fixed
+        continue-on-error: true
         run: |
           set -o pipefail
-          python build_chat.py --full 2>&1 | tee package.txt
+          python pc/ci_pkgtool.py 2>&1 | tee pkgtool.txt
 
-      - name: keep the package
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: station-ai-ps4-pkg
-          path: build/chat/*.pkg
-          compression-level: 0
-          if-no-files-found: error
+      - name: what the loader will see
+        run: |
+          set -o pipefail
+          { echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"; ls -l toolchain/libssl1.1/usr/lib/x86_64-linux-gnu/ || true
+            md5sum /lib/x86_64-linux-gnu/libssl.so.1.1 /usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+                   toolchain/libssl1.1/usr/lib/x86_64-linux-gnu/libssl.so.1.1 2>&1 || true
+            python -c "import build as b; print('WIN', b.WIN); print('SSL11', b.SSL11, (b.SSL11 / 'libssl.so.1.1').exists()); print('ENV', b.ENV.get('LD_LIBRARY_PATH'))"
+          } 2>&1 | tee libssl.txt
 
-      # The same app, with no weights in it: on first start it offers to download a model from Hugging Face
-      # (chat/dl.c) and from then on runs from /data/models. This is the one to hand to someone who has not got
-      # 4.6 GB of package to move around, and the one that proves the downloader works.
+      # The app, with no weights in it: on first start it offers to download a model from Hugging Face (chat/dl.c)
+      # and from then on runs from /data/models. It is the small one, and the one that proves the downloader works.
       - name: build the app-only package (no weights)
         run: |
           set -o pipefail
@@ -269,11 +280,32 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
+      # The all-in-one one, ~4.6 GiB of weights inside. PkgTool.Core's PlayGo estimate comes out short at this
+      # size (LibOrbisPkg#64, see the README), so this step is not allowed to fail the run: the package is
+      # published when the tool manages it and the log says what happened when it does not.
+      - name: build the all-in-one package
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python build_chat.py --full 2>&1 | tee package.txt
+
+      - name: keep the all-in-one package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: station-ai-ps4-pkg
+          path: build/chat/*.pkg
+          compression-level: 0
+          if-no-files-found: ignore
+
       - name: what was built
         if: always()
         run: |
           {
             echo "### station-ai (${{ github.sha }})"
+            echo ""
+            ls build/chat/*.pkg >/dev/null 2>&1 && echo "all-in-one package: built" \
+              || echo "all-in-one package: not built (PkgTool.Core's PlayGo estimate, LibOrbisPkg#64)"
             echo ""
             ls -l build/chat/*.pkg build/chat/slim/*.pkg models/*.bin chat/assets_9b/ 2>/dev/null || true
             echo ""

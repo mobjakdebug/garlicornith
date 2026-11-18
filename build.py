@@ -9,6 +9,7 @@ GARLIC_TOOLCHAIN environment variable):
 
 import ftplib
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +21,9 @@ WIN = os.name == "nt"
 EXE = ".exe" if WIN else ""                       # the tools' names on Windows and on Linux
 ZIG = TOOLCHAIN / "zig" / f"zig{EXE}"
 DOTNET = TOOLCHAIN / "dotnet" / "dotnet.exe"      # Windows only: PkgTool.Core.dll runs on it there
+# PkgTool built from LibOrbisPkg's source by pc/ci_pkgtool.py (its PlayGo estimate fixed, and .NET 8 instead of
+# 3.0): when it is there, `pkg_build` uses it, because the bundled one cannot build a package of several GiB.
+PKGTOOL = TOOLCHAIN / "pkgtool" / f"PkgTool{EXE}"
 # PkgTool.Core is .NET Core 3.0: its crypto needs libssl.so.1.1, which pc/ci_toolchain.py fetches (see there)
 SSL11 = TOOLCHAIN / "libssl1.1" / "usr" / "lib" / "x86_64-linux-gnu"
 BIN = OO / ("bin/windows" if WIN else "bin/linux")
@@ -40,16 +44,42 @@ if not WIN and (SSL11 / "libssl.so.1.1").exists():
     ENV["LD_LIBRARY_PATH"] = f"{SSL11}:{ENV.get('LD_LIBRARY_PATH', '')}".rstrip(":")
 
 
-def run(cmd, **kw):
+def run(cmd, env=None, **kw):
     print(">", " ".join(str(c) for c in cmd))
-    subprocess.run([str(c) for c in cmd], check=True, env=ENV, **kw)
+    subprocess.run([str(c) for c in cmd], check=True, env=env or ENV, **kw)
 
 
 def pkgtool(*args):
+    """Run PkgTool.Core. Its crypto layer is a .NET shim that dlopens `libssl.so.1.1`, which no distribution newer
+    than Ubuntu 22.04 ships; pc/ci_toolchain.py fetches the library, and here it is handed over at the moment the
+    tool runs, not at import (the toolchain may be fetched after this module is read). Two ways, because the .NET
+    host does not always pass LD_LIBRARY_PATH on to the process that does the work: the variable first, then the
+    libraries preloaded, so they are part of the process before anything else looks for them."""
+    if args and args[0] == "pkg_build" and PKGTOOL.exists():
+        print("pkg_build with", PKGTOOL, "(LibOrbisPkg's source, PlayGo estimate fixed)", flush=True)
+        return run([PKGTOOL, *args], cwd=PKGDIR)
     if WIN:
-        run([DOTNET, BIN / "PkgTool.Core.dll", *args], cwd=PKGDIR)
-    else:
-        run([BIN / "PkgTool.Core", *args], cwd=PKGDIR)
+        return run([DOTNET, BIN / "PkgTool.Core.dll", *args], cwd=PKGDIR)
+    libssl, libcrypto = SSL11 / "libssl.so.1.1", SSL11 / "libcrypto.so.1.1"
+    env = ENV
+    tries = [env]
+    if libssl.exists():
+        env = dict(ENV, LD_LIBRARY_PATH=f"{SSL11}:{ENV.get('LD_LIBRARY_PATH', '')}".rstrip(":"))
+        tries = [env, dict(env, LD_PRELOAD=f"{libssl}:{libcrypto}")]
+    print("libssl.so.1.1:", "yes" if libssl.exists() else "no ", SSL11, flush=True)
+    for i, e in enumerate(tries):
+        try:
+            if i:
+                print("> the same command, with libssl 1.1 preloaded", flush=True)
+            return run([BIN / "PkgTool.Core", *args], env=e, cwd=PKGDIR)
+        except subprocess.CalledProcessError:
+            if i == len(tries) - 1:
+                raise
+
+
+def pkg_build(outdir):
+    """`pkg_build` is the one PkgTool.Core command that needs libssl 1.1 (see pc/ci_toolchain.py)."""
+    return pkgtool("pkg_build", "pkg.gp4", str(outdir))
 
 
 def ps4_ftp(timeout=30):

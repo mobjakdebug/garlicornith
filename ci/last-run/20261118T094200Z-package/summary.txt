@@ -1,0 +1,17 @@
+### station-ai (dc509a64f61264b60457dec970f108bb12aab641)
+
+-rw-r--r-- 2 runner runner  212420608 Nov 18 09:39 models/ornith-1.5-9b-mtp.bin
+-rw-r--r-- 2 runner runner 4641752088 Nov 18 09:40 models/ornith-1.5-9b-q4s.bin
+
+chat/assets_9b/:
+total 428
+-rw-r--r-- 1 runner runner 419052 Nov 18 09:41 kernels.bin
+-rw-r--r-- 1 runner runner  11312 Nov 18 09:40 model.idx
+-rw-r--r-- 1 runner runner    588 Nov 18 09:40 mtp.idx
+
+e050b25f248fc0fdb1810c93b8b2dc6b157ba8c037111f85fb6d6c472d93cd53  models/ornith-1.5-9b-mtp.bin
+a0a1bbdf92c87b6afd38da249e0a2b52f822b9e8c4230e90253849037cbe30fc  models/ornith-1.5-9b-q4s.bin
+a6487233220e2edb9f6652da34fc0129e96d30d4ea725c72a8190054f2f24b15  chat/assets_9b/model.idx
+32a083db91663624f18874ec8709ff40809edb8984bb2e9a0a401e63929694eb  chat/assets_9b/mtp.idx
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root       145G   41G  104G  29% /

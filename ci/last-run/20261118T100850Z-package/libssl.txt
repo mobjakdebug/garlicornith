@@ -1,0 +1,8 @@
+LD_LIBRARY_PATH=/opt/hostedtoolcache/Python/3.12.16/x64/lib
+total 3516
+drwxr-xr-x 2 runner runner    4096 Sep 10  2021 engines-1.1
+-rw-r--r-- 1 runner runner 2974576 Sep 10  2021 libcrypto.so.1.1
+-rw-r--r-- 1 runner runner  618456 Sep 10  2021 libssl.so.1.1
+WIN False
+SSL11 /home/runner/work/garlicornith/garlicornith/toolchain/libssl1.1/usr/lib/x86_64-linux-gnu True
+ENV /home/runner/work/garlicornith/garlicornith/toolchain/libssl1.1/usr/lib/x86_64-linux-gnu:/opt/hostedtoolcache/Python/3.12.16/x64/lib
