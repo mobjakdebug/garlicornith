@@ -30,6 +30,10 @@ on:
         description: "push the model to Hugging Face afterwards (needs the HF_TOKEN secret)"
         type: boolean
         default: false
+      release_tag:
+        description: "attach the app-only package to this GitHub release (e.g. v1.23; the release must exist)"
+        type: string
+        default: ""
 
 permissions:
   contents: write          # the jobs publish their logs to ci/last-run/ in the branch
@@ -283,6 +287,24 @@ jobs:
           path: build/chat/slim/*-slim.pkg
           compression-level: 0
           if-no-files-found: error
+
+      # A release's asset has to be uploaded from a runner: the artifact's own download URL is on a storage host the
+      # rest of the world reaches and this workflow's shells do, not every sandbox. The name the player sees is
+      # station-ai-<version>-slim.pkg, not the content id the package tool gives it.
+      - name: attach the app-only package to the release
+        if: ${{ success() && inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          f=$(ls build/chat/slim/*-slim.pkg | head -1)
+          to="station-ai-${TAG#v}-slim.pkg"
+          cp "$f" "$to"
+          ls -l "$f" "$to"
+          gh release view "$TAG" >/dev/null          # the notes are written by hand: this only adds the file
+          gh release upload "$TAG" "$to" --clobber
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'
 
       # The all-in-one one, ~4.6 GiB of weights inside. PkgTool.Core's PlayGo estimate comes out short at this
       # size (LibOrbisPkg#64, see the README), so this step is not allowed to fail the run: the package is
