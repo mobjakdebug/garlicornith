@@ -248,7 +248,7 @@ static int net_up(void) {
     // The pools are the SDK's own numbers times four: a modern server's chain (huggingface.co's is Cloudflare's, two
     // certificates and a long SAN list) needs more room than the 128 KiB the sample sizes for, and TLS that runs out
     // of memory fails the moment it starts.
-    if (ssl_ctx <= 0) ssl_ctx = sceSslInit(512 * 1024);
+    if (ssl_ctx <= 0) ssl_ctx = sceSslInit(1024 * 1024);
     if (ssl_ctx < 0) {
         say("dl: sceSslInit 0x%08X", (unsigned)ssl_ctx);
         dl_code = (unsigned)ssl_ctx;
@@ -267,10 +267,12 @@ static int net_up(void) {
         return -1;
     }
     int cb = sceHttpsSetSslCallback(tpl, ssl_skip, NULL);
-    // The console's certificate store and clock are old, and a check it cannot make used to end the handshake
-    // before the callback above was ever asked: the CN and the two dates are the ones to switch off.
-    int opt = sceHttpsDisableOption(tpl, 0x1C);   // CN_CHECK | NOT_AFTER_CHECK | NOT_BEFORE_CHECK
-    say("dl: TLS: callback 0x%08X, checks off 0x%08X", (unsigned)cb, (unsigned)opt);
+    // The console's certificate store and its clock are both old, and a check it cannot make ends the handshake
+    // before the callback above is ever asked. 0x01 (the server's certificate) is what the PS4 apps that download
+    // over HTTPS in the wild switch off — PKGi-PS4's Network.cpp — and 0x1C adds the CN and the two dates.
+    int o1 = sceHttpsDisableOption(tpl, 0x01);
+    int o2 = sceHttpsDisableOption(tpl, 0x1C);   // CN_CHECK | NOT_AFTER_CHECK | NOT_BEFORE_CHECK
+    say("dl: TLS: callback 0x%08X, verify off 0x%08X, dates off 0x%08X", (unsigned)cb, (unsigned)o1, (unsigned)o2);
     sceHttpSetConnectTimeOut(tpl, 10 * 1000000);   // ten seconds to answer, or the screen says why
     // (the header declares this with no prototype, as it does some others: the SDK's call takes the template and usec)
     sceHttpSetRecvTimeOut(tpl, 15 * 1000000);    // fifteen seconds of silence is a dead connection, and the
@@ -338,11 +340,22 @@ static int http_open(const char* url0, const char* range, int32_t* req_out, int*
             return (int)req;
         }
         if (range && range[0]) sceHttpAddRequestHeader(req, "Range", range, 0);
+        sceHttpSetConnectTimeOut(req, 8 * 1000000);   // (the request carries them too: PKGi-PS4's way)
+        sceKernelUsleep(0);
         int r = sceHttpSendRequest(req, NULL, 0);
         int32_t st = 0;
         if (r >= 0) r = sceHttpGetStatusCode(req, &st);
         if (r < 0) {
-            say("dl: GET %s -> 0x%08X", url, (unsigned)r);
+            // The library's own answer: a name that did not resolve, a refused connection, a TLS refusal. The
+            // Orbis code alone says "failed"; this says why, and it goes to the screen and the log.
+            int32_t ne = 0;
+            if (sceHttpGetLastErrno(req, &ne) == 0 && ne) {
+                say("dl: GET %s -> 0x%08X (net errno 0x%08X)", url, (unsigned)r, (unsigned)ne);
+                dl_code = (unsigned)ne;
+            } else {
+                say("dl: GET %s -> 0x%08X", url, (unsigned)r);
+                dl_code = (unsigned)r;
+            }
             sceHttpDeleteRequest(req);
             sceHttpDeleteConnection(conn);
             return r;
