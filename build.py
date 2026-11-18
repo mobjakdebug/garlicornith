@@ -40,26 +40,34 @@ if not WIN and (SSL11 / "libssl.so.1.1").exists():
     ENV["LD_LIBRARY_PATH"] = f"{SSL11}:{ENV.get('LD_LIBRARY_PATH', '')}".rstrip(":")
 
 
-def run(cmd, **kw):
+def run(cmd, env=None, **kw):
     print(">", " ".join(str(c) for c in cmd))
-    subprocess.run([str(c) for c in cmd], check=True, env=ENV, **kw)
+    subprocess.run([str(c) for c in cmd], check=True, env=env or ENV, **kw)
 
 
 def pkgtool(*args):
-    """PkgTool.Core's crypto layer dlopens libssl.so.1.1; hand it ours at the moment it runs, not at import
-    (the toolchain may have been fetched after this module was read)."""
-    env = ENV
-    if not WIN:
-        libssl = SSL11 / "libssl.so.1.1"
-        print("libssl.so.1.1:", "yes" if libssl.exists() else "no ", SSL11,
-              "| LD_LIBRARY_PATH:", ENV.get("LD_LIBRARY_PATH") or "(unset)", flush=True)
-        if libssl.exists():
-            env = dict(ENV, LD_LIBRARY_PATH=f"{SSL11}:{ENV.get('LD_LIBRARY_PATH', '')}".rstrip(":"))
+    """Run PkgTool.Core. Its crypto layer is a .NET shim that dlopens `libssl.so.1.1`, which no distribution newer
+    than Ubuntu 22.04 ships; pc/ci_toolchain.py fetches the library, and here it is handed over at the moment the
+    tool runs, not at import (the toolchain may be fetched after this module is read). Two ways, because the .NET
+    host does not always pass LD_LIBRARY_PATH on to the process that does the work: the variable first, then the
+    libraries preloaded, so they are part of the process before anything else looks for them."""
     if WIN:
-        subprocess.run([str(c) for c in [DOTNET, BIN / "PkgTool.Core.dll", *args]], check=True, env=env, cwd=PKGDIR)
-    else:
-        print(">", BIN / "PkgTool.Core", *args)
-        subprocess.run([str(c) for c in [BIN / "PkgTool.Core", *args]], check=True, env=env, cwd=PKGDIR)
+        return run([DOTNET, BIN / "PkgTool.Core.dll", *args], cwd=PKGDIR)
+    libssl, libcrypto = SSL11 / "libssl.so.1.1", SSL11 / "libcrypto.so.1.1"
+    env = ENV
+    tries = [env]
+    if libssl.exists():
+        env = dict(ENV, LD_LIBRARY_PATH=f"{SSL11}:{ENV.get('LD_LIBRARY_PATH', '')}".rstrip(":"))
+        tries = [env, dict(env, LD_PRELOAD=f"{libssl}:{libcrypto}")]
+    print("libssl.so.1.1:", "yes" if libssl.exists() else "no ", SSL11, flush=True)
+    for i, e in enumerate(tries):
+        try:
+            if i:
+                print("> the same command, with libssl 1.1 preloaded", flush=True)
+            return run([BIN / "PkgTool.Core", *args], env=e, cwd=PKGDIR)
+        except subprocess.CalledProcessError:
+            if i == len(tries) - 1:
+                raise
 
 
 def ps4_ftp(timeout=30):
