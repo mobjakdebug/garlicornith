@@ -15,6 +15,7 @@
 #include <orbis/Http.h>
 #include <orbis/ImeDialog.h>
 #include <orbis/Net.h>
+#include <orbis/NetCtl.h>
 #include <orbis/Ssl.h>
 #include <orbis/Sysmodule.h>
 #include <orbis/libkernel.h>
@@ -59,7 +60,7 @@ const char* dl_model_dir(void) {
 // ---- the screen ----------------------------------------------------------------------------------------------
 // A progress line (draw_loading draws the bar) and messages that stay a moment. Four languages, as the rest.
 enum { DL_T_CONNECT, DL_T_LIST, DL_T_FILE, DL_T_DONE, DL_T_NOREPO, DL_T_NET, DL_T_NONE, DL_T_CANCEL,
-       DL_T_WHAT, DL_T_INDEX, DL_T_KBD, DL_T_BADREPO, N_DL };
+       DL_T_WHAT, DL_T_INDEX, DL_T_KBD, DL_T_BADREPO, DL_T_NETWAIT, DL_T_DNS, N_DL };
 static const char* DL_STR[N_DL][N_LANGS] = {
     {"Conectando con huggingface.co…", "Connecting to huggingface.co…", "Conectando a huggingface.co…",
      "Подключение к huggingface.co…"},
@@ -84,6 +85,12 @@ static const char* DL_STR[N_DL][N_LANGS] = {
      "Type user/model, for example officialmobai/station-9b.",
      "Escreva usuário/modelo, por exemplo officialmobai/station-9b.",
      "Введите пользователь/модель, например officialmobai/station-9b."},
+    {"Esperando la red de la consola…", "Waiting for the console's network…", "Esperando a rede do console…",
+     "Жду сеть консоли…"},
+    {"huggingface.co no se resuelve: revisa el DNS de la consola (8.8.8.8).",
+     "huggingface.co does not resolve: check the console's DNS (8.8.8.8).",
+     "huggingface.co não resolve: veja o DNS do console (8.8.8.8).",
+     "huggingface.co не разрешается: проверьте DNS консоли (8.8.8.8)."},
 };
 
 static const char* dl_tr(int id) { return DL_STR[id][ui_lang >= 0 && ui_lang < N_LANGS ? ui_lang : LANG_EN]; }
@@ -110,6 +117,45 @@ static void dl_note(const char* msg) {
         dl_progress(1.0f, msg);
         sceKernelUsleep(250000);
     }
+}
+
+// ---- is there a network at all? ------------------------------------------------------------------------------
+// Two questions the console answers itself, asked before a byte is sent, because both used to look like "stuck at
+// the file list": an address (a download started in the seconds after the app appears could go out before the
+// console had one) and a name (a console whose DNS is not answering fails every request at once).
+static int net_address(char* ip, size_t cap) {
+    OrbisNetCtlInfo in;
+    sceNetCtlInit();
+    for (int i = 0; i < 80; i++) {   // eight seconds, then it is not the network's slowness any more
+        memset(&in, 0, sizeof(in));
+        if (sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_IP_ADDRESS, &in) == 0 && in.ip_address[0] &&
+            strcmp(in.ip_address, "0.0.0.0")) {
+            snprintf(ip, cap, "%s", in.ip_address);
+            return 0;
+        }
+        sceKernelUsleep(100000);
+    }
+    return -1;
+}
+
+static int net_resolve(const char* host, char* out, size_t cap) {   // the address as dotted text, for the log
+    int mem = sceNetPoolCreate("station_dns", 64 * 1024, 0);
+    if (mem < 0) return mem;
+    int rid = sceNetResolverCreate("station_resolver", mem, 0);
+    if (rid < 0) {
+        sceNetPoolDestroy(mem);
+        return rid;
+    }
+    OrbisNetInAddr a;
+    memset(&a, 0, sizeof(a));
+    int rc = sceNetResolverStartNtoa(rid, host, &a, 5 * 1000 * 1000, 2, 0);
+    sceNetResolverDestroy(rid);
+    sceNetPoolDestroy(mem);
+    if (rc == 0) {
+        unsigned char* b = (unsigned char*)&a.s_addr;
+        snprintf(out, cap, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
+    }
+    return rc;
 }
 
 // ---- the keyboard: the repository's name ---------------------------------------------------------------------
@@ -199,13 +245,16 @@ static int net_up(void) {
         dl_code = (unsigned)net_pool;
         return -1;
     }
-    if (ssl_ctx <= 0) ssl_ctx = sceSslInit(SSL_POOLSIZE);
+    // The pools are the SDK's own numbers times four: a modern server's chain (huggingface.co's is Cloudflare's, two
+    // certificates and a long SAN list) needs more room than the 128 KiB the sample sizes for, and TLS that runs out
+    // of memory fails the moment it starts.
+    if (ssl_ctx <= 0) ssl_ctx = sceSslInit(1024 * 1024);
     if (ssl_ctx < 0) {
         say("dl: sceSslInit 0x%08X", (unsigned)ssl_ctx);
         dl_code = (unsigned)ssl_ctx;
         return -1;
     }
-    if (http_ctx <= 0) http_ctx = sceHttpInit(net_pool, ssl_ctx, LIBHTTP_POOLSIZE);
+    if (http_ctx <= 0) http_ctx = sceHttpInit(net_pool, ssl_ctx, 256 * 1024);
     if (http_ctx < 0) {
         say("dl: sceHttpInit 0x%08X", (unsigned)http_ctx);
         dl_code = (unsigned)http_ctx;
@@ -217,7 +266,13 @@ static int net_up(void) {
         dl_code = (unsigned)tpl;
         return -1;
     }
-    sceHttpsSetSslCallback(tpl, ssl_skip, NULL);
+    int cb = sceHttpsSetSslCallback(tpl, ssl_skip, NULL);
+    // The console's certificate store and its clock are both old, and a check it cannot make ends the handshake
+    // before the callback above is ever asked. 0x01 (the server's certificate) is what the PS4 apps that download
+    // over HTTPS in the wild switch off — PKGi-PS4's Network.cpp — and 0x1C adds the CN and the two dates.
+    int o1 = sceHttpsDisableOption(tpl, 0x01);
+    int o2 = sceHttpsDisableOption(tpl, 0x1C);   // CN_CHECK | NOT_AFTER_CHECK | NOT_BEFORE_CHECK
+    say("dl: TLS: callback 0x%08X, verify off 0x%08X, dates off 0x%08X", (unsigned)cb, (unsigned)o1, (unsigned)o2);
     sceHttpSetConnectTimeOut(tpl, 10 * 1000000);   // ten seconds to answer, or the screen says why
     // (the header declares this with no prototype, as it does some others: the SDK's call takes the template and usec)
     sceHttpSetRecvTimeOut(tpl, 15 * 1000000);    // fifteen seconds of silence is a dead connection, and the
@@ -285,11 +340,22 @@ static int http_open(const char* url0, const char* range, int32_t* req_out, int*
             return (int)req;
         }
         if (range && range[0]) sceHttpAddRequestHeader(req, "Range", range, 0);
+        sceHttpSetConnectTimeOut(req, 8 * 1000000);   // (the request carries them too: PKGi-PS4's way)
+        sceKernelUsleep(0);
         int r = sceHttpSendRequest(req, NULL, 0);
         int32_t st = 0;
         if (r >= 0) r = sceHttpGetStatusCode(req, &st);
         if (r < 0) {
-            say("dl: GET %s -> 0x%08X", url, (unsigned)r);
+            // The library's own answer: a name that did not resolve, a refused connection, a TLS refusal. The
+            // Orbis code alone says "failed"; this says why, and it goes to the screen and the log.
+            int32_t ne = 0;
+            if (sceHttpGetLastErrno(req, &ne) == 0 && ne) {
+                say("dl: GET %s -> 0x%08X (net errno 0x%08X)", url, (unsigned)r, (unsigned)ne);
+                dl_code = (unsigned)ne;
+            } else {
+                say("dl: GET %s -> 0x%08X", url, (unsigned)r);
+                dl_code = (unsigned)r;
+            }
             sceHttpDeleteRequest(req);
             sceHttpDeleteConnection(conn);
             return r;
@@ -694,12 +760,30 @@ int dl_run(void) {
         dl_note_code(dl_tr(DL_T_NET), dl_code);
         return 0;
     }
+    char ip[32] = "", host[32] = "";
+    dl_progress(0.0f, dl_tr(DL_T_NETWAIT));
+    int have_ip = net_address(ip, sizeof(ip));
+    say("dl: address %s", have_ip ? "(none)" : ip);
+    int dns = net_resolve("huggingface.co", host, sizeof(host));
+    say("dl: huggingface.co -> %s (0x%08X)", dns ? "(no answer)" : host, (unsigned)dns);
+    if (dns) {   // said, not obeyed: libSceHttp has its own resolver, and the request is the real test
+        char line[320];
+        snprintf(line, sizeof(line), "%s [%08X]", dl_tr(DL_T_DNS), (unsigned)dns);
+        dl_note(line);
+        dl_code = (unsigned)dns;
+    }
     char url[700];
     snprintf(url, sizeof(url), DL_API, repo);
     dl_progress(0.0f, dl_tr(DL_T_LIST));
     int err = 0;
     size_t jn = 0;
     char* js = http_text(url, &jn, &err);
+    if (!js) {   // a resolver or a router drops the first one often enough: one more, a moment later
+        say("dl: the list failed (0x%08X); trying once more", (unsigned)err);
+        sceKernelUsleep(1500000);
+        dl_progress(0.0f, dl_tr(DL_T_LIST));
+        js = http_text(url, &jn, &err);
+    }
     DlFile files[DL_MAX_FILES];
     int nf = 0;
     uint64_t total = 0;
@@ -739,7 +823,7 @@ int dl_run(void) {
             snprintf(fu, sizeof(fu), DL_RESOLVE, repo, files[i].path);
             snprintf(fp, sizeof(fp), "%s/%s", dir, files[i].path);
             if (dl_file(fu, fp, files[i].size, &done, total)) {
-                dl_progress(1.0f, dl_tr(DL_T_NET));
+                dl_note_code(dl_tr(DL_T_NET), dl_code);   // (with the code: which file, and what said no)
                 return 0;
             }
         }
