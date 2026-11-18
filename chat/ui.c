@@ -1588,8 +1588,10 @@ static int draw_mark(int x, int cy, int size) {
         uint32_t c = mix(C_ACCENT, C_ACCENT_2, (float)i / size);
         rrect_line(x, y, size, size, size / 4, 1, c, 90);
     }
-    int s = size - 18;
-    if (logo_s.px) draw_image(&logo_s, x + (size - s) / 2, y + (size - s) / 2, 255);
+    // The asset is the mark cropped to its ink, wider than it is tall: centre that box, so the mark sits evenly
+    // inside the border. (Drawn as if it were a square of the tile's inner size, it ran 11 px over the right edge
+    // and a pixel under the bottom one.)
+    if (logo_s.px) draw_image(&logo_s, x + (size - logo_s.w) / 2, y + (size - logo_s.h) / 2, 255);
     return x + size;
 }
 

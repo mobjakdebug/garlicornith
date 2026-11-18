@@ -84,8 +84,11 @@ is 4.6 GB of `.bin` that the app knows how to fetch and verify by itself.
 
 **With the slim package**, the first start opens the downloader before anything else:
 
-* type a repository — `user/model`, or the whole `https://huggingface.co/user/model` — with the on-screen keyboard
-  (or a USB keyboard, if there is one). The model this build is made for lives at
+* a repository comes up already typed — `officialmobai/station-9b` on a console that has never downloaded one, the
+  last one after that — so the keyboard's **SEND** is the whole first run; type another name in its place if you
+  want one (`user/model`, or the whole `https://huggingface.co/user/model`; a USB keyboard types into it too). If
+  the system's keyboard cannot open at all, the download goes ahead with that name and the screen says so.
+  The model this build is made for lives at
   [`officialmobai/station-9b`](https://huggingface.co/officialmobai/station-9b): `4 641 752 088` B of 4-bit weights
   plus its draft head and two indexes, and the card there says what each file is;
 * it reads the repository's file list and fetches only the files the app can run: a `model.idx` and its `.bin`;
@@ -253,7 +256,8 @@ message that says how to write it, so a client is never left guessing.
   `/data` copy that was never made), or if **Triangle** is held at start-up — that way another repository can be
   downloaded even with a model installed.
 * **What it asks for.** The console's keyboard takes a repository — `user/model` or the full
-  `https://huggingface.co/user/model` — and remembers it in `/data/station_hf.txt`.
+  `https://huggingface.co/user/model` — and remembers it in `/data/station_hf.txt`; the field arrives filled with
+  that name (or `officialmobai/station-9b` on a console that has none), so the keyboard only has to be confirmed.
 * **What it downloads.** The root of the repository's `model.idx` and `.bin` files (Hugging Face's
   `api/models/<repo>/tree/main?recursive=1`), through the console's own HTTP client (`libSceHttp` + `libSceSsl`,
   redirects followed by hand since the files come from the CDN), into `/data/models/<repo>/`. The index is written

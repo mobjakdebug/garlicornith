@@ -1868,10 +1868,14 @@ int main(void) {
     if (rename(LOG_FILE, LOG_PREV)) unlink(LOG_FILE);   // the last log of this app is kept, as LOG_PREV
     say("starting");
     boot_report();
-    sceSysmoduleLoadModule(ORBIS_SYSMODULE_IME_DIALOG);
-    sceCommonDialogInitialize();
-    sceUserServiceInitialize(NULL);
-    sceUserServiceGetInitialUser(&user_id);
+    // The system's dialogs (the keyboard the downloader asks for): the module, the common dialog, the user. Logged:
+    // when the keyboard does not come up, which of the three failed is the first thing the log has to say.
+    int ime_mod = sceSysmoduleLoadModule(ORBIS_SYSMODULE_IME_DIALOG);
+    int cd_rc = sceCommonDialogInitialize();
+    int us_rc = sceUserServiceInitialize(NULL);
+    int uu_rc = sceUserServiceGetInitialUser(&user_id);
+    say("dialogs: IME module 0x%08X, common dialog 0x%08X, user service 0x%08X, initial user 0x%08X (%d)",
+        (unsigned)ime_mod, (unsigned)cd_rc, (unsigned)us_rc, (unsigned)uu_rc, user_id);
     scePadInit();
     g_pad = scePadOpen(user_id, 0, 0, NULL);
     int lang = 1;
