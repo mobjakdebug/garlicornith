@@ -242,6 +242,13 @@ jobs:
           set -o pipefail
           python pc/export_kernels_9b.py 2>&1 | tail -20
 
+      - name: what the loader will see
+        run: |
+          set -o pipefail
+          { echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"; ls -l toolchain/libssl1.1/usr/lib/x86_64-linux-gnu/ || true
+            python -c "import build as b; print('WIN', b.WIN); print('SSL11', b.SSL11, (b.SSL11 / 'libssl.so.1.1').exists()); print('ENV', b.ENV.get('LD_LIBRARY_PATH'))"
+          } 2>&1 | tee libssl.txt
+
       - name: build the all-in-one package
         run: |
           set -o pipefail

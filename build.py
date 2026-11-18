@@ -46,10 +46,20 @@ def run(cmd, **kw):
 
 
 def pkgtool(*args):
+    """PkgTool.Core's crypto layer dlopens libssl.so.1.1; hand it ours at the moment it runs, not at import
+    (the toolchain may have been fetched after this module was read)."""
+    env = ENV
+    if not WIN:
+        libssl = SSL11 / "libssl.so.1.1"
+        print("libssl.so.1.1:", "yes" if libssl.exists() else "no ", SSL11,
+              "| LD_LIBRARY_PATH:", ENV.get("LD_LIBRARY_PATH") or "(unset)", flush=True)
+        if libssl.exists():
+            env = dict(ENV, LD_LIBRARY_PATH=f"{SSL11}:{ENV.get('LD_LIBRARY_PATH', '')}".rstrip(":"))
     if WIN:
-        run([DOTNET, BIN / "PkgTool.Core.dll", *args], cwd=PKGDIR)
+        subprocess.run([str(c) for c in [DOTNET, BIN / "PkgTool.Core.dll", *args]], check=True, env=env, cwd=PKGDIR)
     else:
-        run([BIN / "PkgTool.Core", *args], cwd=PKGDIR)
+        print(">", BIN / "PkgTool.Core", *args)
+        subprocess.run([str(c) for c in [BIN / "PkgTool.Core", *args]], check=True, env=env, cwd=PKGDIR)
 
 
 def ps4_ftp(timeout=30):
