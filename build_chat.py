@@ -52,7 +52,7 @@ MP_FLAGS = [f"-I{ROOT / 'chat' / 'py'}", f"-I{MP}", "-DNDEBUG", "-std=gnu99", "-
             "-Wno-unused-function", "-Wno-unused-variable", "-Wno-unused-but-set-variable"]
 LIBS = ["-lc", "-lm", "-lkernel", "-lSceGnmDriver", "-lSceVideoOut", "-lScePad", "-lSceUserService", "-lSceSysmodule",
         "-lSceImeDialog", "-lSceCommonDialog", "-lSceAudioIn", "-lSceAudioOut", "-lSceSystemService", "-lSceNet",
-        "-lSceHttp", "-lSceSsl"]
+        "-lSceNetCtl", "-lSceHttp", "-lSceSsl"]
 
 
 def compile_all():
