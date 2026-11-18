@@ -1,0 +1,37 @@
+ornith-1.5-9b-q4s: 32 layers (24 delta-net), hidden 4096, vocab 248320, gate/up in q3s: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+  layer 0 (linear_attention) done, 105 MiB, 9 s
+  layer 1 (linear_attention) done, 211 MiB, 17 s
+  layer 2 (linear_attention) done, 316 MiB, 25 s
+  layer 3 (full_attention) done, 417 MiB, 33 s
+  layer 4 (linear_attention) done, 522 MiB, 41 s
+  layer 5 (linear_attention) done, 628 MiB, 49 s
+  layer 6 (linear_attention) done, 733 MiB, 57 s
+  layer 7 (full_attention) done, 834 MiB, 65 s
+  layer 8 (linear_attention) done, 939 MiB, 72 s
+  layer 9 (linear_attention) done, 1045 MiB, 80 s
+  layer 10 (linear_attention) done, 1150 MiB, 89 s
+  layer 11 (full_attention) done, 1251 MiB, 96 s
+  layer 12 (linear_attention) done, 1356 MiB, 104 s
+  layer 13 (linear_attention) done, 1461 MiB, 112 s
+  layer 14 (linear_attention) done, 1567 MiB, 120 s
+  layer 15 (full_attention) done, 1667 MiB, 128 s
+  layer 16 (linear_attention) done, 1773 MiB, 136 s
+  layer 17 (linear_attention) done, 1878 MiB, 144 s
+  layer 18 (linear_attention) done, 1984 MiB, 151 s
+  layer 19 (full_attention) done, 2084 MiB, 159 s
+  layer 20 (linear_attention) done, 2190 MiB, 167 s
+  layer 21 (linear_attention) done, 2295 MiB, 174 s
+  layer 22 (linear_attention) done, 2401 MiB, 182 s
+  layer 23 (full_attention) done, 2501 MiB, 190 s
+  layer 24 (linear_attention) done, 2607 MiB, 198 s
+  layer 25 (linear_attention) done, 2712 MiB, 205 s
+  layer 26 (linear_attention) done, 2817 MiB, 213 s
+  layer 27 (full_attention) done, 2918 MiB, 220 s
+  layer 28 (linear_attention) done, 3023 MiB, 228 s
+  layer 29 (linear_attention) done, 3129 MiB, 235 s
+  layer 30 (linear_attention) done, 3234 MiB, 242 s
+  layer 31 (full_attention) done, 3335 MiB, 250 s
+  lm_head 248070 rows done, GPU part 3880 MiB, 264 s
+  embedding 248320 rows + 248070 ids, 4427 MiB, 273 s
+  model.idx: 308 records, flags 7, weights at /data/ornith-1.5-9b-q4s.bin
+  ornith-1.5-9b-mtp.bin: tensors 130.6 MiB + draft table 72.0 MiB; mtp.idx 588 B, 3 s
