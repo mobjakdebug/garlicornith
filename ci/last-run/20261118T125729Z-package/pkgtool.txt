@@ -1,0 +1,2 @@
+PkgTool from LibOrbisPkg's source
+  no dotnet here: the bundled PkgTool.Core is used (a 5 GB package will not build)
