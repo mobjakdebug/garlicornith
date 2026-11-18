@@ -49,6 +49,10 @@ Garlic LLM is built with the OpenOrbis PS4 Toolchain and [Zig](https://ziglang.o
 
 The garlic mark, the icon and the home screen background were drawn for Garlic LLM (`pc/make_brand.py`).
 
+Station AI's own mark — the two ribbons, the dots and the two hairline ornaments — is rebuilt as geometry from the
+logo artwork by the same script, and the wordmark under it is set in **Inter SemiBold** by Rasmus Andersson, under the
+SIL Open Font License 1.1 (`pc/brand/Inter-SemiBold.ttf`, licence beside it).
+
 ---
 
 Not affiliated with or endorsed by Sony Interactive Entertainment. PlayStation and PS4 are trademarks of their owners.

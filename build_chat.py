@@ -29,7 +29,7 @@ if "--4b" in sys.argv:
     TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI 4B", "1.17", "PSAI00002", "02"
     REMOTE = "/data/pkg/Station-AI-4B.pkg"
 else:
-    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.22", "PSAI00003", "03"
+    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.23", "PSAI00003", "03"
     REMOTE = "/data/pkg/Station-AI.pkg"
 FULL = "--full" in sys.argv
 SLIM = "--slim" in sys.argv

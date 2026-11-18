@@ -171,7 +171,7 @@ static int net_up(void) {
         say("dl: sceHttpInit 0x%08X", (unsigned)http_ctx);
         return -1;
     }
-    tpl = sceHttpCreateTemplate(http_ctx, "Station AI/1.22 (PLAYSTATION 4)", ORBIS_HTTP_VERSION_1_1, 1);
+    tpl = sceHttpCreateTemplate(http_ctx, "Station AI/1.23 (PLAYSTATION 4)", ORBIS_HTTP_VERSION_1_1, 1);
     if (tpl < 0) {
         say("dl: sceHttpCreateTemplate 0x%08X", (unsigned)tpl);
         return -1;

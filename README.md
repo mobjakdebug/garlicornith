@@ -1,15 +1,17 @@
 <div align="center">
 
+<img src="docs/ui/mark.png" alt="Station AI" width="104">
+
 # Station AI
 
 **A nine-billion-parameter language model running on a PlayStation 4's own GPU — offline, from the couch,
 with an OpenAI-compatible server on the same console.**
 
 [![build-station-ai-ps4](https://github.com/mobjakdebug/garlicornith/actions/workflows/build.yml/badge.svg)](https://github.com/mobjakdebug/garlicornith/actions/workflows/build.yml)
-![version](https://img.shields.io/badge/version-1.22-6EE7A8)
-![model](https://img.shields.io/badge/model-Ornith--1.5--9B-6EE7A8)
-![params](https://img.shields.io/badge/weights-3.8%20GiB%20on%20the%20GPU-101216)
-![offline](https://img.shields.io/badge/internet-not%20needed-101216)
+![version](https://img.shields.io/badge/version-1.23-2C5AE2)
+![model](https://img.shields.io/badge/model-Ornith--1.5--9B-2C5AE2)
+![params](https://img.shields.io/badge/weights-3.8%20GiB%20on%20the%20GPU-1C1F26)
+![offline](https://img.shields.io/badge/internet-not%20needed-1C1F26)
 
 <img src="docs/ui/chat.png" alt="the conversation" width="900">
 
@@ -470,6 +472,7 @@ speculative decoding report themselves unavailable instead of taking the context
 | `chat/ui.c` | the whole interface: theme, header, cards, markdown tables and code panels, keyboard, voice sheet, loading and error cards, the panel |
 | `chat/panel.inc` | the panel itself (OPTIONS): five sections — API, images, model, system, about — and the file each one writes |
 | `pc/ui_preview.c` | the same screens rendered on a PC to a PNG (`chat/ui.c` only), so the look can be checked without the console |
+| `pc/make_brand.py` | the mark, the icon and the splash, drawn as geometry from the logo artwork (`chat/assets/logo.bin`, `chat/sce_sys/`); the wordmark is set in `pc/brand`'s Inter SemiBold (SIL OFL) |
 | `chat/api.c`, `chat/api_proto.c`, `chat/api_run.inc` | the OpenAI-compatible server: chat, completions, responses, models, SSE, the OpenAPI document |
 | `chat/dl.c` | the model downloader: Hugging Face's file list, `libSceHttp`, resume with `Range`, `/data/models` |
 | `chat/imgen.c`, `chat/img.c`, `chat/png.c` | image models through the API: the backend's answer, a PNG reader (inflate) and a PNG writer, by hand |
@@ -480,5 +483,6 @@ speculative decoding report themselves unavailable instead of taking the context
 
 Garlic LLM is © Leonardo Alegría, under the licence in [`LICENSE`](LICENSE) (see [`CREDITS.md`](CREDITS.md) for the
 fonts, Twemoji, MicroPython and the models it ships). Ornith-1.5-9B is MIT-licensed. This repository adds the GGUF
-converter, the layout checks, the panel, the downloader and the CI; the app, the kernels and the build scripts are
-upstream's.
+converter, the layout checks, the panel, the downloader, the CI and the Station AI mark — drawn as geometry by
+`pc/make_brand.py`, its wordmark set in Inter SemiBold (SIL OFL, `pc/brand`). The app, the kernels and the build
+scripts are upstream's.

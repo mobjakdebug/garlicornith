@@ -10,4 +10,5 @@ Fuentes: Selawik (Microsoft), Noto Sans, Noto Sans Symbols / Symbols 2 / Math, N
          Arimo, Inconsolata, Cascadia Mono (Microsoft): SIL Open Font License 1.1; DejaVu Sans: licencia de
          Bitstream Vera y dominio público. Convertidas a mapas de bits. Avisos de copyright y textos de las
          licencias en LICENCIAS_FUENTES.txt.
-Logotipo e icono: dibujados para Garlic LLM (pc/make_brand.py).
+Logotipo e icono: el emblema de Station AI, rehecho como geometría con pc/make_brand.py; la palabra
+         "station ai" va en Inter SemiBold (Rasmus Andersson), SIL Open Font License 1.1 (pc/brand).
