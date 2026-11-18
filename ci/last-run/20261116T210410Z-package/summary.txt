@@ -1,0 +1,19 @@
+### garlic-ornith-ps4 (7f3a6c37c2a9d68b673749aceff706e4793968af)
+
+-rw-r--r-- 1 runner runner 4898750464 Nov 16 21:03 build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
+-rw-r--r-- 2 runner runner  212420608 Nov 16 20:55 models/ornith-1.5-9b-mtp.bin
+-rw-r--r-- 2 runner runner 4641752088 Nov 16 21:01 models/ornith-1.5-9b-q4s.bin
+
+chat/assets_9b/:
+total 428
+-rw-r--r-- 1 runner runner 418232 Nov 16 20:52 kernels.bin
+-rw-r--r-- 1 runner runner  11312 Nov 16 21:01 model.idx
+-rw-r--r-- 1 runner runner    588 Nov 16 21:01 mtp.idx
+
+7e099dc121ef0b773050726e7ff98e1cae57ef80ed698c7bc0bdb874b1a8d82e  build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
+58eddfe8795c8a37827af5cc4b46c0c6d1e39e7e2ca905dc4c6e838bc1980848  models/ornith-1.5-9b-mtp.bin
+deed6c2180e0241fb89cd1f508c952cd6e4829802a4dacf1bfaf5902dcaa16d0  models/ornith-1.5-9b-q4s.bin
+a6487233220e2edb9f6652da34fc0129e96d30d4ea725c72a8190054f2f24b15  chat/assets_9b/model.idx
+32a083db91663624f18874ec8709ff40809edb8984bb2e9a0a401e63929694eb  chat/assets_9b/mtp.idx
+Filesystem            Size  Used Avail Use% Mounted on
+/dev/mapper/cow-root  145G   42G  103G  30% /

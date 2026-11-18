@@ -1,0 +1,20 @@
+delta rule of layer 0: 32 value heads; the GGUF's head i holds Hugging Face's [0, 2, 4, 6]... (all the first, then all the second of each pair)
+  ssm_a == -exp(A_log) in that order                       yes
+  ssm_dt.bias in that order                                yes
+  ssm_beta.weight in that order                            yes
+  ssm_alpha.weight in that order                           yes
+  attn_gate.weight in that order                           yes
+  ssm_out.weight in that order                             yes
+  attn_qkv q|k rows as they are                            yes
+  attn_qkv v rows in that order                            yes
+  ssm_conv1d v channels in that order                      yes
+  output_norm.weight is 1 + w as the app wants it          yes
+  attn_norm.weight is 1 + w as the app wants it            yes
+  post_attention_norm.weight is 1 + w as the app wants it  yes
+  ssm_norm.weight is w as the app wants it                 yes
+  token_embd.weight as it is                               yes
+  output.weight as it is                                   yes
+  blk.0.ffn_gate.weight as it is                           yes
+  blk.3.attn_q.weight as it is                             yes
+  blk.3.attn_output.weight as it is                        yes
+  => the layout is the one the converter assumes

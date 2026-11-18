@@ -1,0 +1,338 @@
+// OpenAI-compatible API jobs (api.c queues them; included in main.c, so it sees the engine and the conversation).
+// A job runs on the model between the chat's turns: the request's messages are the whole conversation, so the
+// conversation on screen is cleared, and the reply is written to the connection (whole, or as server-sent events).
+// The reply is generated as the chat generates its own: several tokens per step with the MTP head where the app has
+// it (GARLIC_SPEC), and Circle on the controller stops it. What the screen shows meanwhile is main.c's part
+// (api_chat_begin / _reply / _step / _end).
+
+static uint32_t api_ids[16384];   // the prompt of a job (byte-level tokens: at most one per byte of text)
+#define API_MAX_TEXT 15000        // bytes of message text a request may carry (the prompt must fit api_ids)
+
+// How many bytes at the start of p (n) are whole UTF-8 characters (the rest waits for the next token).
+static size_t api_utf8_whole(const uint8_t* p, size_t n) {
+    size_t i = n;
+    for (int back = 1; back <= 4 && i > 0; back++) {
+        i--;
+        uint8_t c = p[i];
+        if ((c & 0xC0) == 0x80) continue;   // a continuation byte: keep looking for its lead byte
+        size_t need = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : (c >> 3) == 30 ? 4 : 1;
+        return back < (int)need ? i : n;
+    }
+    return n;
+}
+
+// one server-sent event; -1 if the client went away
+static int api_send_event(int fd, const char* json) {
+    Sb s;
+    sb_init(&s);
+    sb_str(&s, "data: ");
+    sb_str(&s, json);
+    sb_str(&s, "\n\n");
+    int r = s.p && !s.oom ? api_send(fd, s.p, s.n) : -1;
+    sb_free(&s);
+    return r;
+}
+
+// One turn of the prompt: <|im_start|>role\ncontent<|im_end|>\n. Returns the new length, or -1 if it does not fit.
+static int api_prompt_turn(int n, const char* role, const char* text, size_t len) {
+    api_ids[n++] = IM_START;
+    n = encode_into(api_ids, n, 16384, role);
+    n = encode_into(api_ids, n, 16384, "\n");
+    if (len) n = encode_into(api_ids, n, 16384, text);
+    api_ids[n++] = IM_END;
+    return encode_into(api_ids, n, 16384, "\n");
+}
+
+// Builds the prompt from a request: the instruction (if any), then the conversation or the one text, then the
+// assistant's turn with the empty thought block (as the chat does, enable_thinking=false). Returns the number of ids,
+// or -1 if it does not fit.
+static int api_prompt(const JNode* pool, const ChatRequest* cr) {
+    int n = 0;
+    size_t total = 0;
+    Sb text;
+    sb_init(&text);
+    if (cr->instructions >= 0) {
+        json_str_sb(pool, cr->instructions, &text);
+        if (!text.p || text.n > API_MAX_TEXT) {
+            sb_free(&text);
+            return -1;
+        }
+        if ((n = api_prompt_turn(n, "system", text.p, text.n)) >= 16380) {
+            sb_free(&text);
+            return -1;
+        }
+        text.n = 0;
+    }
+    if (cr->prompt >= 0) {   // one text (an older endpoint): a single user turn
+        json_str_sb(pool, cr->prompt, &text);
+        if (!text.p || text.n > API_MAX_TEXT) {
+            sb_free(&text);
+            return -1;
+        }
+        n = api_prompt_turn(n, "user", text.p, text.n);
+        sb_free(&text);
+        if (n < 0 || n >= 16380) return -1;
+        text.n = 0;
+        sb_init(&text);
+    }
+    for (int m = cr->prompt >= 0 || cr->messages < 0 ? -1 : pool[cr->messages].first; m >= 0; m = pool[m].next) {
+        text.n = 0;
+        char role[16] = "user";
+        int ok;
+        if (pool[m].type == J_STR) {   // (an /v1/responses input may be a bare string)
+            ok = 0;
+            json_str_sb(pool, m, &text);
+        } else {
+            ok = api_message(pool, m, role, sizeof(role), &text) == 0;
+        }
+        if (!ok || !text.p) {
+            sb_free(&text);
+            return -1;
+        }
+        total += text.n;
+        if (total > API_MAX_TEXT) {
+            sb_free(&text);
+            return -1;
+        }
+        if (strcmp(role, "system") && strcmp(role, "assistant") && strcmp(role, "user") && strcmp(role, "tool"))
+            strcpy(role, "user");
+        n = api_prompt_turn(n, role, text.p, text.n);
+        if (n < 0 || n >= 16380) {
+            sb_free(&text);
+            return -1;
+        }
+    }
+    sb_free(&text);
+    api_ids[n++] = IM_START;
+    n = encode_into(api_ids, n, 16384, "assistant\n");
+    if (eng.qwen35) {
+        api_ids[n++] = THINK;
+        n = encode_into(api_ids, n, 16384, "\n\n");
+        api_ids[n++] = THINK_END;
+        n = encode_into(api_ids, n, 16384, "\n\n");
+    }
+    return n;
+}
+
+static void api_error(int fd, const char* status_line, const char* message, const char* type, const char* code) {
+    Sb s;
+    sb_init(&s);
+    api_json_error(&s, message, type, code);
+    Sb h;
+    sb_init(&h);
+    sb_str(&h, status_line);
+    sb_str(&h, "\r\nContent-Type: application/json\r\nContent-Length: ");
+    sb_int(&h, (long long)s.n);
+    sb_str(&h, "\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n");
+    if (h.p && s.p && api_send(fd, h.p, h.n) == 0) api_send(fd, s.p, s.n);
+    sb_free(&h);
+    sb_free(&s);
+}
+
+static void api_job(ApiJob* job) {
+    static unsigned api_count;
+    if (job->kind == API_JOB_IMAGES) {   // the picture is drawn elsewhere (imgen.c): no tokens, no conversation
+        imgen_run(job->fd, job->body, job->body_len);
+        view.scroll = 0;   // (the picture it just added is the newest thing on screen)
+        return;
+    }
+    int resp_api = job->kind == API_JOB_RESPONSES;
+    JNode* pool = malloc(sizeof(JNode) * API_MAX_NODES);
+    ChatRequest cr;
+    const char* err = NULL;
+    if (!pool || (job->kind == API_JOB_CHAT
+                      ? api_chat_parse(job->body, job->body_len, pool, API_MAX_NODES, &cr, &err)
+                      : api_text_parse(job->body, job->body_len, pool, API_MAX_NODES, &cr, resp_api, &err))) {
+        free(pool);
+        api_error(job->fd, "HTTP/1.1 400 Bad Request", err ? err : "Out of memory.", "invalid_request_error",
+                  "invalid_body");
+        return;
+    }
+    int n = api_prompt(pool, &cr);
+    if (n < 0) {
+        free(pool);
+        api_error(job->fd, "HTTP/1.1 400 Bad Request", "The messages are malformed or too long.",
+                  "invalid_request_error", "context_length_exceeded");
+        return;
+    }
+    free(pool);
+    if (n + cr.max_tokens + 2 > (int)eng.ctx_limit) {
+        api_error(job->fd, "HTTP/1.1 400 Bad Request", "The messages and max_tokens do not fit the context window.",
+                  "invalid_request_error", "context_length_exceeded");
+        return;
+    }
+    // the model answers this request: the conversation on screen starts again from nothing (a request refused
+    // above leaves it as it was)
+    pos = 0;
+    need_close = 0;
+    hist_n = hist_done = 0;
+    thinking = think_turn = 0;
+    sys_pre = 0;
+    view.scroll = 0;
+    api_chat_begin();   // (clears the conversation: a note says that a request is being answered)
+    if (cr.has_seed) seed = cr.seed;
+    char id[32];
+    snprintf(id, sizeof(id), "%s%u", job->kind == API_JOB_CHAT      ? "chatcmpl-"
+                                     : job->kind == API_JOB_RESPONSES ? "resp_"
+                                                                      : "cmpl-",
+             ++api_count);
+    const char* model = api_model();
+    long long created = (long long)time(NULL);
+    say("api: prompt of %d tokens, up to %d new, T %.2f%s", n, cr.max_tokens, cr.temperature,
+        cr.stream ? ", streamed" : "");
+    engine_reset(&eng);
+    if (engine_run(&eng, api_ids, n, 0, (float)cr.temperature, seed++, &next_token)) {
+        api_error(job->fd, "HTTP/1.1 500 Internal Server Error", eng.error, "server_error", NULL);
+        pos = 0;
+        api_chat_end();
+        return;
+    }
+    pos = n;
+
+    int fd = job->fd, streamed = 0, client_gone = 0, error = 0;
+    if (cr.stream) {
+        const char* h = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\n"
+                        "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+        if (api_send(fd, h, strlen(h))) client_gone = 1;
+        streamed = 1;
+        Sb first;
+        sb_init(&first);
+        if (job->kind == API_JOB_CHAT) api_json_chunk(&first, id, model, created, "assistant", "", 0, NULL);
+        else if (job->kind == API_JOB_COMPLETIONS) api_json_text_chunk(&first, id, model, created, "", 0, NULL);
+        else api_json_response_event(&first, "response.created", id, "", 0);
+        if (!client_gone && first.p && api_send_event(fd, first.p)) client_gone = 1;
+        sb_free(&first);
+    }
+
+    Sb text, pend;   // the reply (all of it), and the bytes of the last tokens not yet a whole character
+    sb_init(&text);
+    sb_init(&pend);
+    int produced = 0, stopped = 0;
+    const char* finish = "length";
+    // The tokens to write: the one a step drew, after those it kept from the MTP head's draft (the model has read
+    // these already). Without the head a step is one token.
+    uint32_t q[9];
+    int nq = 1, iq = 0;
+    q[0] = next_token;
+    double t0 = now();
+    api_chat_reply();
+    while (produced < cr.max_tokens) {
+        uint32_t t = q[iq++];
+        if (t == IM_END || t == eng.eos2 || t == eng.eos) {
+            finish = "stop";
+            break;
+        }
+        const uint8_t* bytes = NULL;
+        int nb = tok_piece(&tok, t, &bytes);
+        produced++;
+        if (nb > 0) {
+            sb_add(&text, (const char*)bytes, nb);
+            sb_add(&pend, (const char*)bytes, nb);
+        }
+        if (streamed && pend.n) {
+            size_t whole = api_utf8_whole((const uint8_t*)pend.p, pend.n);
+            if (whole) {
+                Sb ev;
+                sb_init(&ev);
+                if (job->kind == API_JOB_CHAT) api_json_chunk(&ev, id, model, created, NULL, pend.p, whole, NULL);
+                else if (job->kind == API_JOB_COMPLETIONS)
+                    api_json_text_chunk(&ev, id, model, created, pend.p, whole, NULL);
+                else api_json_response_event(&ev, "response.output_text.delta", id, pend.p, whole);
+                if (ev.p && api_send_event(fd, ev.p)) client_gone = 1;
+                sb_free(&ev);
+                memmove(pend.p, pend.p + whole, pend.n - whole);
+                pend.n -= whole;
+                pend.p[pend.n] = 0;
+            }
+        }
+        if (client_gone || produced == cr.max_tokens) break;
+        if (iq < nq) continue;   // (the next token is one the last step kept)
+        if (api_chat_step(produced)) {   // Circle: the reply ends here, cut short as by max_tokens
+            stopped = 1;
+            break;
+        }
+        int ne = 0;   // tokens of the draft this step keeps
+#ifdef GARLIC_SPEC
+        if (spec_active(&eng)) {   // (never more than max_tokens: the step keeps at most what is left of them)
+            if (engine_spec_step(&eng, t, pos, (float)cr.temperature, seed++, cr.max_tokens - produced + 1, q, &ne,
+                                 &next_token)) {
+                error = 1;
+                break;
+            }
+        } else
+#endif
+        if (engine_run(&eng, &t, 1, pos, (float)cr.temperature, seed++, &next_token)) {
+            error = 1;
+            break;
+        }
+        pos += 1 + ne;
+        q[ne] = next_token;
+        nq = ne + 1, iq = 0;
+    }
+    double dt = now() - t0;
+    say("api: %d tokens in %.1f s (%.1f tokens/s), %s", produced, dt, dt > 0 ? produced / dt : 0.0,
+        error ? "engine error" : stopped ? "stopped on the console" : finish);
+
+    if (streamed) {
+        if (!client_gone && !error) {
+            Sb last;
+            sb_init(&last);
+            if (job->kind == API_JOB_CHAT) {
+                api_json_chunk(&last, id, model, created, NULL, "", 0, finish);
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                api_send(fd, "data: [DONE]\n\n", 14);
+            } else if (job->kind == API_JOB_COMPLETIONS) {
+                api_json_text_chunk(&last, id, model, created, "", 0, finish);
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                api_send(fd, "data: [DONE]\n\n", 14);
+            } else {   // /v1/responses: the text is done, then the response whole (the stream's own end)
+                api_json_response_event(&last, "response.output_text.done", id, text.p ? text.p : "", text.n);
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                Sb obj;
+                sb_init(&obj);
+                api_json_response(&obj, id, model, created, text.p ? text.p : "", text.n, "completed", n, produced);
+                sb_init(&last);
+                sb_str(&last, "{\"type\":\"response.completed\",\"response\":");
+                if (obj.p) sb_add(&last, obj.p, obj.n);
+                sb_str(&last, "}");
+                if (last.p) api_send_event(fd, last.p);
+                sb_free(&last);
+                sb_free(&obj);
+            }
+        }
+        if (error && !client_gone) {   // the headers are out: the error goes in the stream
+            Sb e;
+            sb_init(&e);
+            api_json_error(&e, eng.error, "server_error", NULL);
+            if (e.p) api_send_event(fd, e.p);
+            sb_free(&e);
+        }
+    } else if (error) {
+        api_error(fd, "HTTP/1.1 500 Internal Server Error", eng.error, "server_error", NULL);
+    } else {
+        Sb body, head;
+        sb_init(&body);
+        sb_init(&head);
+        if (job->kind == API_JOB_CHAT)
+            api_json_completion(&body, id, model, created, text.p ? text.p : "", text.n, finish, n, produced);
+        else if (job->kind == API_JOB_COMPLETIONS)
+            api_json_text_completion(&body, id, model, created, text.p ? text.p : "", text.n, finish, n, produced);
+        else
+            api_json_response(&body, id, model, created, text.p ? text.p : "", text.n, "completed", n, produced);
+        sb_str(&head, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ");
+        sb_int(&head, (long long)body.n);
+        sb_str(&head, "\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n");
+        if (head.p && body.p && api_send(fd, head.p, head.n) == 0) api_send(fd, body.p, body.n);
+        sb_free(&body);
+        sb_free(&head);
+    }
+    sb_free(&text);
+    sb_free(&pend);
+    // the engine's state is this request's; the conversation on screen starts again at position 0
+    pos = 0;
+    need_close = 0;
+    api_chat_end();
+}

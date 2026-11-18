@@ -1,0 +1,91 @@
+source: https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF/resolve/main/Ornith-1.5-9B-BF16.gguf
+read: 28.0 MiB (the header, not the weights) in 1.6 s
+architecture=qwen35 name=Ornith-1.5-9B quant=32 tensors=442
+vocab=248320 layers=32 hidden=4096 inter=12288 heads=16 kv=4 head_dim=256 eps=1e-06 rope_theta=1e+07
+delta net: key heads=16 value heads=32 key dim=128 value dim=128 conv=4
+layer kinds: {'full_attention': 8, 'linear_attention': 24}
+  qwen35.block_count = 33
+  qwen35.nextn_predict_layers = 1
+  qwen35.full_attention_interval = 4
+  qwen35.context_length = 262144
+  qwen35.rope.dimension_count = 64
+  qwen35.rope.dimension_sections = [11, 11, 10, 0]
+  qwen35.ssm.inner_size = 4096
+  qwen35.ssm.group_count = 16
+  qwen35.ssm.time_step_rank = 32
+  qwen35.attention.value_length = 256
+  tokenizer.ggml.pre = qwen35
+  tokenizer.ggml.eos_token_id = 248046
+  tokenizer.ggml.padding_token_id = 248044
+  general.file_type = 32
+  general.size_label = 9B
+metadata keys: general.architecture, general.basename, general.file_type, general.license, general.license.link, general.name, general.quantization_version, general.size_label, general.tags, general.type, qwen35.attention.head_count, qwen35.attention.head_count_kv, qwen35.attention.key_length, qwen35.attention.layer_norm_rms_epsilon, qwen35.attention.value_length, qwen35.block_count, qwen35.context_length, qwen35.embedding_length, qwen35.feed_forward_length, qwen35.full_attention_interval, qwen35.nextn_predict_layers, qwen35.rope.dimension_count, qwen35.rope.dimension_sections, qwen35.rope.freq_base, qwen35.ssm.conv_kernel, qwen35.ssm.group_count, qwen35.ssm.inner_size, qwen35.ssm.state_size, qwen35.ssm.time_step_rank, tokenizer.chat_template, tokenizer.ggml.add_bos_token, tokenizer.ggml.eos_token_id, tokenizer.ggml.merges, tokenizer.ggml.model, tokenizer.ggml.padding_token_id, tokenizer.ggml.pre, tokenizer.ggml.token_type, tokenizer.ggml.tokens
+
+layer 0 (linear_attention):
+    attn_norm blk.0.attn_norm.weight                     (4096,)
+    mlp_norm  blk.0.post_attention_norm.weight           (4096,)
+    in_qkv    blk.0.attn_qkv.weight                      (8192, 4096)
+    in_z      blk.0.attn_gate.weight                     (4096, 4096)
+    in_b      blk.0.ssm_beta.weight                      (32, 4096)
+    in_a      blk.0.ssm_alpha.weight                     (32, 4096)
+    conv      blk.0.ssm_conv1d.weight                    (8192, 4)
+    A         blk.0.ssm_a                                (32,)
+    dt        blk.0.ssm_dt.bias                          (32,)
+    gnorm     blk.0.ssm_norm.weight                      (128,)
+    wout      blk.0.ssm_out.weight                       (4096, 4096)
+    gu_gate   blk.0.ffn_gate.weight                      (12288, 4096)
+    gu_up     blk.0.ffn_up.weight                        (12288, 4096)
+    down      blk.0.ffn_down.weight                      (4096, 12288)
+    -> w_in (12352, 4096), conv (8192, 4), A (32,)
+
+layer 3 (full_attention):
+    attn_norm blk.3.attn_norm.weight                     (4096,)
+    mlp_norm  blk.3.post_attention_norm.weight           (4096,)
+    q_norm    blk.3.attn_q_norm.weight                   (256,)
+    k_norm    blk.3.attn_k_norm.weight                   (256,)
+    o         blk.3.attn_output.weight                   (4096, 4096)
+    gu_gate   blk.3.ffn_gate.weight                      (12288, 4096)
+    gu_up     blk.3.ffn_up.weight                        (12288, 4096)
+    down      blk.3.ffn_down.weight                      (4096, 12288)
+    q         blk.3.attn_q.weight                        (8192, 4096)
+    k         blk.3.attn_k.weight                        (1024, 4096)
+    v         blk.3.attn_v.weight                        (1024, 4096)
+    -> wqkv (10240, 4096)
+
+the app's kernel shapes: layers 32, hidden 4096, inter 12288, heads 16, kv 4, head_dim 256, key heads 16, value heads 32, key dim 128, value dim 128
+tensors by type: BF16 258 (17.13 GiB), F32 184 (0.00 GiB)
+
+tokenizer.bin: 248070 tokens, 247587 merges
+GGUF: 248320 tokens, 247587 merges
+  the GGUF has 250 ids past the app's vocabulary (unused: the keep list stops at 248070)
+  all 248070 tokens hold the same bytes as the app's tokenizer.bin
+  all 247587 merges in the same rank order
+  special ids: </think>=248069, <think>=248068, <|endoftext|>=248044, <|im_end|>=248046, <|im_start|>=248045, <|image_pad|>=248056, <|vision_start|>=248053
+  NOTE: 33 control/user-defined tokens in the GGUF, 26 special in the app's
+  => the app's tokenizer.bin and keep list can be used as they are
+keep list: 248070 ids, 0..248069, 248070 unique
+
+MTP head in the GGUF: 4 nextn tensors
+  its block, blk.32: attn_k.weight, attn_k_norm.weight, attn_norm.weight, attn_output.weight, attn_q.weight, attn_q_norm.weight, attn_v.weight, ffn_down.weight, ffn_gate.weight, ffn_up.weight, nextn.eh_proj.weight, nextn.enorm.weight, nextn.hnorm.weight, nextn.shared_head_norm.weight, post_attention_norm.weight
+delta rule of layer 0: 32 value heads; the GGUF's head i holds Hugging Face's [0, 2, 4, 6]... (all the first, then all the second of each pair)
+  ssm_a == -exp(A_log) in that order                       yes
+  ssm_dt.bias in that order                                yes
+  ssm_beta.weight in that order                            yes
+  ssm_alpha.weight in that order                           yes
+  attn_gate.weight in that order                           yes
+  ssm_out.weight in that order                             yes
+  attn_qkv q|k rows as they are                            yes
+  attn_qkv v rows in that order                            yes
+  ssm_conv1d v channels in that order                      yes
+  output_norm.weight is 1 + w as the app wants it          yes
+  attn_norm.weight is 1 + w as the app wants it            yes
+  post_attention_norm.weight is 1 + w as the app wants it  yes
+  ssm_norm.weight is w as the app wants it                 yes
+  token_embd.weight as it is                               yes
+  output.weight as it is                                   yes
+  blk.0.ffn_gate.weight as it is                           yes
+  blk.3.attn_q.weight as it is                             yes
+  blk.3.attn_output.weight as it is                        yes
+  => the layout is the one the converter assumes
+
+done in 12 s; 333.5 MiB read

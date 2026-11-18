@@ -1,0 +1,120 @@
+name: probe
+
+# Cheap checks, on demand: what a GGUF of Ornith-1.5-9B holds, and what the OpenOrbis toolchain release contains.
+# Nothing here is built. Push a change to ci/probe (or run the workflow by hand) and read the reports in
+# ci/last-run/<utc>-<job>/ in this branch (the run publishes them itself).
+on:
+  push:
+    paths: ["ci/probe"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  gguf:
+    name: Ornith-1.5-9B GGUF (metadata, tensors, tokenizer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy
+      - name: self-test of the GGUF reader
+        run: python tests/gguf_test.py
+      - name: inspect the model
+        run: |
+          set -o pipefail
+          python pc/ornith_convert.py inspect 2>&1 | tee inspect.txt
+          python pc/ornith_check_layout.py 2>&1 | tee layout.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gguf-inspect
+          path: "*.txt"
+      - name: publish the logs to the branch
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -e
+          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-${{ github.job }}"
+          mkdir -p "$d"
+          for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "$d"
+          git diff --cached --quiet && exit 0
+          git commit -q -m "ci: logs of ${{ github.workflow }} ${{ github.run_id }} (${{ github.job }})"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH" || true
+            git rebase -q "origin/$BRANCH" 2>/dev/null || git rebase --abort 2>/dev/null || true
+            git push -q origin "HEAD:$BRANCH" && break || sleep 10
+          done
+
+  toolchain:
+    name: OpenOrbis toolchain and Zig
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install
+        continue-on-error: true
+        timeout-minutes: 20
+        run: python pc/ci_toolchain.py 2>&1 | tail -40
+      - name: what is there
+        run: |
+          python pc/ci_toolchain.py --probe 2>&1 | tee probe.txt || true
+          echo "--- lib ---" | tee -a probe.txt
+          ls toolchain/OpenOrbis/PS4Toolchain/lib 2>&1 | head -40 | tee -a probe.txt || true
+          echo "--- zig ---" | tee -a probe.txt
+          ./toolchain/zig/zig version 2>&1 | tee -a probe.txt || true
+          ./toolchain/zig/zig cc -target x86_64-freebsd-none -O2 -c -x c -o /tmp/t.o - <<<"int f(void){return 3;}" \
+            && echo "zig cc: x86_64-freebsd-none works" | tee -a probe.txt
+          ./toolchain/zig/zig ld.lld --version 2>&1 | tee -a probe.txt || true
+          ./toolchain/OpenOrbis/PS4Toolchain/bin/linux/PkgTool.Core 2>&1 | head -5 | tee -a probe.txt || true
+          OO=toolchain/OpenOrbis/PS4Toolchain
+          echo "--- network and hash libraries ---" | tee -a probe.txt
+          ls $OO/lib | grep -iE "http|ssl|netctl|sha|crypto|json|websock" | tee -a probe.txt || echo "(none)" | tee -a probe.txt
+          echo "--- their headers ---" | tee -a probe.txt
+          ls $OO/include | grep -iE "http|ssl|netctl|sha|crypto|json" | tee -a probe.txt || echo "(none)" | tee -a probe.txt
+          echo "--- sceHttp.h / sceSsl.h, if they are there ---" | tee -a probe.txt
+          for h in sceHttp.h sceSsl.h sceNetCtl.h sceNet.h; do
+            printf '#include <%s>\nint f(void){return 0;}\n' "$h" > /tmp/h.c
+            [ -e "$OO/include/$h" ] && ./toolchain/zig/zig cc -target x86_64-freebsd-none -nostdinc -isystem $OO/include \
+              -O2 -c /tmp/h.c -o /tmp/h.o && echo "$h: compiles" | tee -a probe.txt || echo "$h: no" | tee -a probe.txt
+          done
+          echo "--- the GPU kernels, rebuilt here from shaders/ ---" | tee -a probe.txt
+          sed -i "s|ZIG / \"zig.exe\"|ZIG / \"zig\"|" pc/gpu.py 2>/dev/null || true
+          python pc/export_kernels_9b.py 2>&1 | tail -5 | tee -a probe.txt || true
+          git status --short chat/assets_9b | tee -a probe.txt
+          git diff --stat chat/assets_9b | tee -a probe.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: toolchain-probe
+          path: "*.txt"
+      - name: publish the logs to the branch
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -e
+          d="ci/last-run/$(date -u +%Y%m%dT%H%M%SZ)-${{ github.job }}"
+          mkdir -p "$d"
+          for f in *.txt; do [ -e "$f" ] && cp -f "$f" "$d"/; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "$d"
+          git diff --cached --quiet && exit 0
+          git commit -q -m "ci: logs of ${{ github.workflow }} ${{ github.run_id }} (${{ github.job }})"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH" || true
+            git rebase -q "origin/$BRANCH" 2>/dev/null || git rebase --abort 2>/dev/null || true
+            git push -q origin "HEAD:$BRANCH" && break || sleep 10
+          done

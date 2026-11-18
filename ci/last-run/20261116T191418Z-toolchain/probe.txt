@@ -1,0 +1,66 @@
+toolchain dir: /home/runner/work/garlicornith/garlicornith/toolchain
+  OpenOrbis                yes /home/runner/work/garlicornith/garlicornith/toolchain/OpenOrbis/PS4Toolchain
+  zig                      yes /home/runner/work/garlicornith/garlicornith/toolchain/zig
+  PS4Toolchain/bin/linux   yes /home/runner/work/garlicornith/garlicornith/toolchain/OpenOrbis/PS4Toolchain/bin/linux
+    bin/linux/create-fself     yes
+    bin/linux/create-gp4       yes
+    bin/linux/PkgTool.Core     yes
+    bin/linux/PkgTool.Core.dll no
+    link.x                       yes
+    lib                          yes
+    include                      yes
+    samples/hello_world          yes
+      sce_sys/about/*.sprx       ['right.sprx']
+      sce_module/*.prx           ['libc.prx', 'libSceFios2.prx']
+    zig binary /home/runner/work/garlicornith/garlicornith/toolchain/zig/zig yes
+--- toolchain tree (2 levels) ---
+lrwxrwxrwx 1 runner runner 90 Nov 16 19:14 toolchain/OpenOrbis/PS4Toolchain -> /home/runner/work/garlicornith/garlicornith/toolchain/raw_openorbis/OpenOrbis/PS4Toolchain
+
+toolchain:
+total 28
+drwxr-xr-x  7 runner runner 4096 Nov 16 19:14 .
+drwxr-xr-x 11 runner runner 4096 Nov 16 19:14 ..
+drwxr-xr-x  2 runner runner 4096 Nov 16 19:14 OpenOrbis
+drwxr-xr-x  2 runner runner 4096 Nov 16 19:14 downloads
+drwxr-xr-x  3 runner runner 4096 Nov 16 19:14 raw_openorbis
+drwxr-xr-x  3 runner runner 4096 Nov 16 19:14 raw_zig
+drwxr-xr-x  4 runner runner 4096 Nov 16 19:14 zig
+
+toolchain/OpenOrbis:
+total 12
+drwxr-xr-x 2 runner runner 4096 Nov 16 19:14 .
+drwxr-xr-x 7 runner runner 4096 Nov 16 19:14 ..
+lrwxrwxrwx 1 runner runner   90 Nov 16 19:14 PS4Toolchain -> /home/runner/work/garlicornith/garlicornith/toolchain/raw_openorbis/OpenOrbis/PS4Toolchain
+--- lib and include ---
+toolchain/OpenOrbis/PS4Toolchain/include:
+EGL
+GLES2
+KHR
+README.md
+SDL2
+aio.h
+alloca.h
+ar.h
+arpa
+assert.h
+bits
+byteswap.h
+c++
+complex.h
+cpio.h
+crypt.h
+ctype.h
+dirent.h
+dlfcn.h
+elf.h
+endian.h
+err.h
+errno.h
+fcntl.h
+features.h
+fenv.h
+float.h
+fmtmsg.h
+fnmatch.h
+--- zig ---
+0.13.0

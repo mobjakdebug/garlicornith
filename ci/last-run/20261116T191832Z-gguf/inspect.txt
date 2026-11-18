@@ -1,0 +1,24 @@
+source: https://huggingface.co/ornith-ai/Ornith-1.5-9B-GGUF/resolve/main/Ornith-1.5-9B-BF16.gguf
+read: 28.0 MiB (the header, not the weights) in 1.3 s
+architecture=qwen35 name=Ornith-1.5-9B quant=32 tensors=442
+vocab=248320 layers=33 hidden=4096 inter=12288 heads=16 kv=4 head_dim=256 eps=1e-06 rope_theta=1e+07
+delta net: key heads=16 value heads=32 key dim=128 value dim=128 conv=4
+layer kinds: {'full_attention': 9, 'linear_attention': 24}
+metadata keys: general.architecture, general.basename, general.file_type, general.license, general.license.link, general.name, general.quantization_version, general.size_label, general.tags, general.type, qwen35.attention.head_count, qwen35.attention.head_count_kv, qwen35.attention.key_length, qwen35.attention.layer_norm_rms_epsilon, qwen35.attention.value_length, qwen35.block_count, qwen35.context_length, qwen35.embedding_length, qwen35.feed_forward_length, qwen35.full_attention_interval, qwen35.nextn_predict_layers, qwen35.rope.dimension_count, qwen35.rope.dimension_sections, qwen35.rope.freq_base, qwen35.ssm.conv_kernel, qwen35.ssm.group_count, qwen35.ssm.inner_size, qwen35.ssm.state_size, qwen35.ssm.time_step_rank, tokenizer.chat_template, tokenizer.ggml.add_bos_token, tokenizer.ggml.eos_token_id, tokenizer.ggml.merges, tokenizer.ggml.model, tokenizer.ggml.padding_token_id, tokenizer.ggml.pre, tokenizer.ggml.token_type, tokenizer.ggml.tokens
+
+layer 0 (linear_attention):
+    attn_norm blk.0.attn_norm.weight                     (4096,)
+    mlp_norm  blk.0.post_attention_norm.weight           (4096,)
+    in_qkv    blk.0.attn_qkv.weight                      (8192, 4096)
+    in_z      blk.0.attn_gate.weight                     (4096, 4096)
+    in_b      blk.0.ssm_beta.weight                      (32, 4096)
+    in_a      blk.0.ssm_alpha.weight                     (32, 4096)
+    conv      blk.0.ssm_conv1d.weight                    (8192, 4)
+    A         blk.0.ssm_a                                (32,)
+    dt        blk.0.ssm_dt.bias                          (32,)
+    gnorm     blk.0.ssm_norm.weight                      (128,)
+    wout      blk.0.ssm_out.weight                       (4096, 4096)
+    gu_gate   blk.0.ffn_gate.weight                      (12288, 4096)
+    gu_up     blk.0.ffn_up.weight                        (12288, 4096)
+    down      blk.0.ffn_down.weight                      (4096, 12288)
+blk.0.ssm_a: not 2-D ((32,))

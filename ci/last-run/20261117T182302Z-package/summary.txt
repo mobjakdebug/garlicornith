@@ -1,0 +1,19 @@
+### station-ai (2b377272a37d297203c44217e3f7f5e919655d5b)
+
+-rw-r--r-- 1 runner runner 4898816000 Nov 17 18:22 build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
+-rw-r--r-- 2 runner runner  212420608 Nov 17 18:18 models/ornith-1.5-9b-mtp.bin
+-rw-r--r-- 2 runner runner 4641752088 Nov 17 18:19 models/ornith-1.5-9b-q4s.bin
+
+chat/assets_9b/:
+total 428
+-rw-r--r-- 1 runner runner 419052 Nov 17 18:20 kernels.bin
+-rw-r--r-- 1 runner runner  11312 Nov 17 18:19 model.idx
+-rw-r--r-- 1 runner runner    588 Nov 17 18:19 mtp.idx
+
+99d0325b523e9bff82fb92e71bf2f74c102c8f8b54591cbbc174fb9b0d7231df  build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
+e050b25f248fc0fdb1810c93b8b2dc6b157ba8c037111f85fb6d6c472d93cd53  models/ornith-1.5-9b-mtp.bin
+a0a1bbdf92c87b6afd38da249e0a2b52f822b9e8c4230e90253849037cbe30fc  models/ornith-1.5-9b-q4s.bin
+a6487233220e2edb9f6652da34fc0129e96d30d4ea725c72a8190054f2f24b15  chat/assets_9b/model.idx
+32a083db91663624f18874ec8709ff40809edb8984bb2e9a0a401e63929694eb  chat/assets_9b/mtp.idx
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root       145G   46G   99G  32% /

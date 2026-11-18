@@ -1,0 +1,65 @@
+toolchain dir: /home/runner/work/garlicornith/garlicornith/toolchain
+  OpenOrbis                yes /home/runner/work/garlicornith/garlicornith/toolchain/OpenOrbis/PS4Toolchain
+  zig                      yes /home/runner/work/garlicornith/garlicornith/toolchain/zig
+  PS4Toolchain/bin/linux   yes /home/runner/work/garlicornith/garlicornith/toolchain/OpenOrbis/PS4Toolchain/bin/linux
+    bin/linux/create-fself     yes
+    bin/linux/create-gp4       yes
+    bin/linux/PkgTool.Core     yes
+    bin/linux/PkgTool.Core.dll no
+    link.x                       yes
+    lib                          yes
+    include                      yes
+    samples/hello_world          yes
+      sce_sys/about/*.sprx       ['right.sprx']
+      sce_module/*.prx           ['libc.prx', 'libSceFios2.prx']
+    zig binary /home/runner/work/garlicornith/garlicornith/toolchain/zig/zig yes
+--- lib ---
+MicrosoftCSharp.so
+MonoCSharp.so
+MonoCairo.so
+MonoDataSqlite.so
+MonoDataTds.so
+MonoDynamicInterpreter.so
+MonoSecurity.so
+README.md
+SMDiagnostics.so
+ScePlayStationCore.so
+ScePlayStationHighLevelUI2.so
+ScePlayStationHighLevelUI2Platform.so
+ScePlayStationIme.so
+ScePlayStationJson.so
+ScePlayStationOrbis.so
+ScePlayStationOrbisSpeech.so
+SceVsh.so
+SceVshAccessor.so
+SceVshAccessorDb.so
+SceVshAccessorDbNotify.so
+SceVshAppDbWrapper.so
+SceVshAppInstUtilWrapper.so
+SceVshAutoMounterWrapper.so
+SceVshBackupRestoreUtil.so
+SceVshDataTransfer.so
+SceVshDbPreparationWrapper.so
+SceVshDbRecoveryUtilityWrapper.so
+SceVshDbShared.so
+SceVshErrorDialogUtilWrapper.so
+SceVshEventServiceWrapper.so
+SceVshFileSelector.so
+SceVshFriend.so
+SceVshGameListRetrieverWrapper.so
+SceVshGlsGlsSharedMediaView.so
+SceVshGlsNativeCall.so
+SceVshGriefReportStorage.so
+SceVshJsExtension.so
+SceVshKernelSysWrapper.so
+SceVshLx.so
+SceVshMarlinDownloaderWrapper.so
+--- zig ---
+0.13.0
+zig cc: x86_64-freebsd-none works
+LLD 18.1.6 (compatible with GNU linkers)
+Process terminated. Couldn't find a valid ICU package installed on the system. Set the configuration flag System.Globalization.Invariant to true if you want to run with no globalization support.
+   at System.Environment.FailFast(System.String)
+   at System.Globalization.GlobalizationMode.GetGlobalizationInvariantMode()
+   at System.Globalization.GlobalizationMode..cctor()
+   at System.Globalization.CultureData.CreateCultureWithInvariantData()

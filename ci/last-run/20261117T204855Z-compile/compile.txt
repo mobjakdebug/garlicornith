@@ -1,0 +1,17 @@
+In file included from /home/runner/work/garlicornith/garlicornith/chat/main.c:1939:
+/home/runner/work/garlicornith/garlicornith/chat/panel.inc:133:45: error: called object type 'char[18]' is not a function or function pointer
+  133 |         pv->tip[2] = "  -d '{\"model\": \"" MODEL_NAME "\", \"messages\": []}'";
+      |                      ~~~~~~~~~~~~~~~~~~~~~~ ^
+/home/runner/work/garlicornith/garlicornith/chat/main.c:43:20: note: expanded from macro 'MODEL_NAME'
+   43 | #define MODEL_NAME (eng.qwen35 ? (eng.hidden >= 4096 ? "Ornith-1.5-9B" : "Qwen3.5-4B") : "Qwen3-4B")
+      |                    ^
+In file included from /home/runner/work/garlicornith/garlicornith/chat/main.c:1939:
+/home/runner/work/garlicornith/garlicornith/chat/panel.inc:133:55: error: expected ';' after expression
+  133 |         pv->tip[2] = "  -d '{\"model\": \"" MODEL_NAME "\", \"messages\": []}'";
+      |                                                       ^
+      |                                                       ;
+/home/runner/work/garlicornith/garlicornith/chat/panel.inc:133:56: warning: expression result unused [-Wunused-value]
+  133 |         pv->tip[2] = "  -d '{\"model\": \"" MODEL_NAME "\", \"messages\": []}'";
+      |                                                        ^~~~~~~~~~~~~~~~~~~~~~~~
+1 warning and 2 errors generated.
+compile failed: /home/runner/work/garlicornith/garlicornith/chat/main.c
