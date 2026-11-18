@@ -120,7 +120,11 @@ def ssl11_loads(lib):
     lib = Path(lib)
     if not (lib / "libssl.so.1.1").exists():
         return False, "no libssl.so.1.1"
-    script = "import ctypes\nctypes.CDLL('libcrypto.so.1.1', ctypes.RTLD_GLOBAL)\nctypes.CDLL('libssl.so.1.1', ctypes.RTLD_GLOBAL)\n"
+    # RTLD_NOW: lazy binding would hide exactly the failure PkgTool.Core hits (`undefined symbol: SSL_state`)
+    script = ("import ctypes, os\n"
+              "mode = os.RTLD_NOW | os.RTLD_GLOBAL\n"
+              "ctypes.CDLL('libcrypto.so.1.1', mode=mode)\n"
+              "ctypes.CDLL('libssl.so.1.1', mode=mode)\n")
     try:
         r = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
                            env=dict(os.environ, LD_LIBRARY_PATH=str(lib)))
@@ -129,7 +133,7 @@ def ssl11_loads(lib):
     if r.returncode == 0:
         return True, ""
     lines = (r.stderr or r.stdout).strip().splitlines()
-    return False, next((l.strip() for l in lines if "error" in l.lower()), lines[-1] if lines else "?")
+    return False, next((l.strip() for l in lines if "error" in l.lower()), lines[-1] if lines else "?")[:110]
 
 
 def libssl11():
@@ -161,7 +165,7 @@ def libssl11():
         # newest first in each group
         order = sorted(found, reverse=True)
         order.sort(key=lambda n: 0 if "1.1.1f" in n else 1)
-        names = [(pool, n) for n in order[:4]]
+        names = [(pool, n) for n in order[:6]]
         break
     for pool, name in names:
         try:
