@@ -146,32 +146,10 @@ def main():
     if not b.WIN and not (b.SSL11 / "libssl.so.1.1").exists():
         print("warning: no libssl.so.1.1 in", b.SSL11, "-> PkgTool.Core will abort unless the system has one")
         print("         (run python pc/ci_toolchain.py to fetch it)")
-    # LibOrbisPkg works the size of the PlayGo chunk-hash table out from an estimate aligned to 0x80000, and on
-    # a package of several GiB that estimate lands a chunk or two short ("Playgo Chunk hash file was not
-    # allocated enough space. Report this as a bug", LibOrbisPkg#64). A pad file in assets/ moves the total
-    # onto a residue the estimate does cover; below 0x80000 is the whole of the choice, so a handful of pads
-    # covers it. The pad that worked stays in the package (it is one asset among the others).
-    pad = PKGDIR / "assets" / "pad.bin"
-    for size in (0, 0x20000, 0x40000, 0x60000, 0x80000, 0xa0000):
-        if size:
-            pad.write_bytes(bytes(size))
-        elif pad.exists():
-            pad.unlink()
-        if size:                                    # it has to be in the file list the gp4 declares
-            files = [f for f in files if not f.endswith("pad.bin")] + ["assets/pad.bin"]
-        try:
-            b.run([b.BIN / f"create-gp4{b.EXE}", "-out", "pkg.gp4", f"--content-id={CONTENT_ID}",
-                   "--files", " ".join(files)], cwd=PKGDIR)
-            fix_gp4_dirs()
-            b.pkg_build(pkgout)
-        except subprocess.CalledProcessError:
-            if size == 0xa0000:
-                raise
-            print(f"the package did not fit the PlayGo estimate; trying a {hex(size)}-byte pad", flush=True)
-            continue
-        if size:
-            print(f"built with a {hex(size)}-byte pad: {pad.relative_to(PKGDIR)}", flush=True)
-        break
+    b.run([b.BIN / f"create-gp4{b.EXE}", "-out", "pkg.gp4", f"--content-id={CONTENT_ID}", "--files", " ".join(files)],
+          cwd=PKGDIR)
+    fix_gp4_dirs()
+    b.pkg_build(pkgout)
     pkg = pkgout / f"{CONTENT_ID}.pkg"
     if SLIM:   # the same app without the weights: it downloads a model on the console instead
         pkg = pkg.with_name(f"{CONTENT_ID}-slim.pkg")

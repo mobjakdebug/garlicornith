@@ -337,9 +337,11 @@ Two things the Linux runners needed, both in the scripts:
   drops `LD_LIBRARY_PATH` and the loader then searches only the distribution's own paths.
   `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` covers the other half of the same problem (no ICU).
 * **A four-gigabyte package hits a LibOrbisPkg bug** ([#64](https://github.com/maxton/LibOrbisPkg/issues/64)): the
-  PlayGo chunk-hash table is sized from an estimate aligned to 512 KiB and comes out a chunk or two short. So
-  `build_chat.py` keeps a small `assets/pad.bin` and retries the package with a few different pads until the total
-  lands where the estimate covers it. A small package (the slim one) never needs it.
+  PlayGo chunk-hash table is sized from an estimate, and at this size it comes out a chunk or two short, so
+  `pkg_build` stops with *"Playgo Chunk hash file was not allocated enough space"* — padding the package to a
+  different alignment does not help, the estimate is short by a fixed amount. The **slim** package (41 MB) is
+  unaffected and is what a console that already has the weights needs; for the all-in-one one the estimate has to be
+  fixed in the tool itself.
 * The logs are pushed back with `permissions: contents: write`; without it the push is refused and the step still
   says "success".
 
