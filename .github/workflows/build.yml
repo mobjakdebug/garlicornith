@@ -246,6 +246,8 @@ jobs:
         run: |
           set -o pipefail
           { echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"; ls -l toolchain/libssl1.1/usr/lib/x86_64-linux-gnu/ || true
+            md5sum /lib/x86_64-linux-gnu/libssl.so.1.1 /usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+                   toolchain/libssl1.1/usr/lib/x86_64-linux-gnu/libssl.so.1.1 2>&1 || true
             python -c "import build as b; print('WIN', b.WIN); print('SSL11', b.SSL11, (b.SSL11 / 'libssl.so.1.1').exists()); print('ENV', b.ENV.get('LD_LIBRARY_PATH'))"
           } 2>&1 | tee libssl.txt
 

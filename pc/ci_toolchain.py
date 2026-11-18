@@ -155,25 +155,37 @@ def libssl11():
                      "  The pools tried are SSL11_POOLS in pc/ci_toolchain.py.")
 
 
+SSL11_NAMES = ("libssl.so.1.1", "libcrypto.so.1.1")
+SSL11_DESTS = ("/lib/x86_64-linux-gnu", "/usr/lib/x86_64-linux-gnu")
+
+
 def expose_ssl11(lib):
-    """PkgTool.Core is a self-extracting .NET host, and the process it finally runs in does not see the
-    LD_LIBRARY_PATH that build.py sets (the host drops it: the loader then searches only the directories on the
-    distribution's own path). So put the two libraries where the loader looks by default. That needs root; CI has
-    passwordless sudo, and without it the LD_LIBRARY_PATH route is still worth a try."""
-    dest = Path("/usr/lib/x86_64-linux-gnu")
-    names = ("libssl.so.1.1", "libcrypto.so.1.1")
-    if all((dest / n).exists() for n in names):
-        return
-    for cmd in (["cp"], ["sudo", "-n", "cp"]):
-        try:
-            subprocess.run([*cmd, *[str(lib / n) for n in names], str(dest) + "/"], check=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            log(f"  copied {', '.join(names)} into {dest} (PkgTool.Core's loader searches there)")
-            return
-        except Exception:  # noqa: BLE001
+    """PkgTool.Core is a self-extracting .NET host, and the process it ends up in never sees the LD_LIBRARY_PATH
+    that build.py sets (the .NET host drops the variable, and then the loader searches only the directories on the
+    distribution's own path). So put the pair of libraries where the loader looks by default — both /lib and
+    /usr/lib, since they are not always the same directory. That needs root; CI has passwordless sudo, and without
+    it the LD_LIBRARY_PATH route is still worth a try. A libssl and a libcrypto from different builds do not work
+    together (the loader reports `undefined symbol: SSL_state`), so both go in, always as a pair."""
+    seen = set()
+    for name in SSL11_DESTS:
+        dest = Path(name)
+        if not dest.is_dir() or dest.resolve() in seen:
             continue
-    log(f"  could not copy into {dest}: PkgTool.Core may not find libssl 1.1 "
-        f"(cp {lib}/libssl*.so.1.1 {dest}/ as root)")
+        seen.add(dest.resolve())
+        want = {n: (lib / n).read_bytes() for n in SSL11_NAMES}
+        have = {n: dest / n for n in SSL11_NAMES}
+        if all(p.exists() and p.read_bytes() == want[n] for n, p in have.items()):
+            continue                                   # already ours
+        for cmd in (["cp"], ["sudo", "-n", "cp"]):
+            try:
+                subprocess.run([*cmd, *[str(lib / n) for n in SSL11_NAMES], str(dest) + "/"], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                log(f"  {', '.join(SSL11_NAMES)} -> {dest} (PkgTool.Core's loader searches there)")
+                break
+            except Exception:  # noqa: BLE001
+                continue
+        else:
+            log(f"  could not copy into {dest} (needs root): cp {lib}/libssl*.so.1.1 {dest}/")
 
 
 def system_ssl():
