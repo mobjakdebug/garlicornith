@@ -119,7 +119,10 @@ def libssl11():
     no message at all (its other commands, which need no crypto, still work). Take the library out of a package
     and let build.py put it on the loader's path."""
     lib = SSL11 / "usr" / "lib" / "x86_64-linux-gnu"
-    if os.name == "nt" or (lib / "libssl.so.1.1").exists():
+    if os.name == "nt":
+        return
+    if (lib / "libssl.so.1.1").exists():
+        expose_ssl11(lib)
         return
     log("libssl 1.1 (PkgTool.Core's crypto library)")
     for pool in SSL11_POOLS:
@@ -139,6 +142,7 @@ def libssl11():
             subprocess.run(["dpkg-deb", "-x", str(deb), str(SSL11)], check=True)
             if (lib / "libssl.so.1.1").exists():
                 log(f"  {name} -> {lib}")
+                expose_ssl11(lib)
                 return
             log(f"  {name}: extracted, but not into {lib}")
         except Exception as ex:  # noqa: BLE001
@@ -149,6 +153,27 @@ def libssl11():
     raise SystemExit("no libssl 1.1 anywhere, and PkgTool.Core cannot build a package without it:\n"
                      "  it dlopens libssl.so.1.1 (Ubuntu 20.04 and older ship it; 22.04 and newer do not).\n"
                      "  The pools tried are SSL11_POOLS in pc/ci_toolchain.py.")
+
+
+def expose_ssl11(lib):
+    """PkgTool.Core is a self-extracting .NET host, and the process it finally runs in does not see the
+    LD_LIBRARY_PATH that build.py sets (the host drops it: the loader then searches only the directories on the
+    distribution's own path). So put the two libraries where the loader looks by default. That needs root; CI has
+    passwordless sudo, and without it the LD_LIBRARY_PATH route is still worth a try."""
+    dest = Path("/usr/lib/x86_64-linux-gnu")
+    names = ("libssl.so.1.1", "libcrypto.so.1.1")
+    if all((dest / n).exists() for n in names):
+        return
+    for cmd in (["cp"], ["sudo", "-n", "cp"]):
+        try:
+            subprocess.run([*cmd, *[str(lib / n) for n in names], str(dest) + "/"], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            log(f"  copied {', '.join(names)} into {dest} (PkgTool.Core's loader searches there)")
+            return
+        except Exception:  # noqa: BLE001
+            continue
+    log(f"  could not copy into {dest}: PkgTool.Core may not find libssl 1.1 "
+        f"(cp {lib}/libssl*.so.1.1 {dest}/ as root)")
 
 
 def system_ssl():
