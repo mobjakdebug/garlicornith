@@ -1,0 +1,38 @@
+OpenOrbis PS4 toolchain
+  get https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
+  -> /home/runner/work/garlicornith/garlicornith/toolchain/downloads/toolchain-llvm-18.tar.gz (151 MiB)
+  extract toolchain-llvm-18.tar.gz -> /home/runner/work/garlicornith/garlicornith/toolchain/raw_openorbis
+/home/runner/work/garlicornith/garlicornith/pc/ci_toolchain.py:84: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.
+  t.extractall(into)
+  toolchain root: /home/runner/work/garlicornith/garlicornith/toolchain/raw_openorbis/OpenOrbis/PS4Toolchain
+  linked /home/runner/work/garlicornith/garlicornith/toolchain/OpenOrbis/PS4Toolchain -> /home/runner/work/garlicornith/garlicornith/toolchain/raw_openorbis/OpenOrbis/PS4Toolchain
+Zig
+  get https://ziglang.org/download/0.14.1/zig-linux-x86_64-0.14.1.tar.xz
+  https://ziglang.org/download/0.14.1/zig-linux-x86_64-0.14.1.tar.xz: HTTP Error 404: Not Found
+  get https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+  -> /home/runner/work/garlicornith/garlicornith/toolchain/downloads/zig-linux-x86_64-0.13.0.tar.xz (45 MiB)
+  extract zig-linux-x86_64-0.13.0.tar.xz -> /home/runner/work/garlicornith/garlicornith/toolchain/raw_zig
+libssl 1.1 (PkgTool.Core's crypto library): /home/runner/work/garlicornith/garlicornith/toolchain/libssl1.1/usr/lib/x86_64-linux-gnu
+  does not load (no libssl.so.1.1)
+  get https://old-releases.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu4_amd64.deb
+  -> /home/runner/work/garlicornith/garlicornith/toolchain/downloads/libssl1.1_1.1.1f-1ubuntu4_amd64.deb (1 MiB)
+  libssl1.1_1.1.1f-1ubuntu4_amd64.deb: loads
+  libssl.so.1.1, libcrypto.so.1.1 -> /lib/x86_64-linux-gnu (PkgTool.Core's loader searches there)
+toolchain dir: /home/runner/work/garlicornith/garlicornith/toolchain
+  OpenOrbis                yes /home/runner/work/garlicornith/garlicornith/toolchain/OpenOrbis/PS4Toolchain
+  zig                      yes /home/runner/work/garlicornith/garlicornith/toolchain/zig
+  PS4Toolchain/bin/linux   yes /home/runner/work/garlicornith/garlicornith/toolchain/OpenOrbis/PS4Toolchain/bin/linux
+    bin/linux/create-fself     yes
+    bin/linux/create-gp4       yes
+    bin/linux/PkgTool.Core     yes
+    bin/linux/PkgTool.Core.dll no
+    link.x                       yes
+    lib                          yes
+    include                      yes
+    samples/hello_world          yes
+      sce_sys/about/*.sprx       ['right.sprx']
+      sce_module/*.prx           ['libc.prx', 'libSceFios2.prx']
+    zig binary /home/runner/work/garlicornith/garlicornith/toolchain/zig/zig yes
+    libssl.so.1.1 yes /home/runner/work/garlicornith/garlicornith/toolchain/libssl1.1/usr/lib/x86_64-linux-gnu
+      [('libcrypto.so.1.1', 2982912), ('libssl.so.1.1', 602048)]
+    the system's own libssl 1.1 yes
