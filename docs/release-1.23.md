@@ -34,6 +34,15 @@ instead of sending you back to the menu.
 it is tall, so eleven pixels of it ran over the rounded tile's right border and one under its bottom edge. The
 asset is now cropped to the mark's ink and centred by its real box, in the header and on the loading card's circle.
 
+**TLS, set the way the PS4 apps that work set it.** The console's certificate store and its clock are both old, and a
+check it cannot make ends the handshake before the app is asked: the template now switches off the server
+certificate (`sceHttpsDisableOption`, 0x01 — PKGi-PS4's own setting) and the CN and the two dates (0x1C), the SSL
+pool is a megabyte (the SDK samples 128 KiB, which a current certificate chain can exhaust), and the request carries
+its own connect timeout. A request that fails asks `sceHttpGetLastErrno()` why, so a name that did not resolve, a
+refused connection and a TLS refusal appear as three different numbers instead of one. Before any of that, NetCtl is
+asked for the console's address — eight seconds of patience, logged — and `huggingface.co` is resolved by hand and
+logged, and the list request is retried once, a second and a half later.
+
 **The file list has a second way in.** The downloader used to depend on Hugging Face's tree API for the names and
 sizes of the files. It now falls back to the index itself: `model.idx` carries the name and the size of the weights
 file it describes (a 128-byte path at byte 52, the size at 180), so two small GETs on `/resolve/main/` are enough to
