@@ -9,6 +9,7 @@ GARLIC_TOOLCHAIN environment variable):
 
 import ftplib
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -68,6 +69,26 @@ def pkgtool(*args):
         except subprocess.CalledProcessError:
             if i == len(tries) - 1:
                 raise
+
+
+def pkg_build(outdir):
+    """`pkg_build` is the one PkgTool.Core command that needs libssl 1.1, and on a distribution that ships
+    OpenSSL 3 the .NET host the tool unpacks itself into does not manage to use the copy pc/ci_toolchain.py
+    fetches. When that happens and Docker is here, do that one command inside Ubuntu 20.04, whose system
+    libraries are the ones PkgTool.Core was built against."""
+    try:
+        return pkgtool("pkg_build", "pkg.gp4", str(outdir))
+    except subprocess.CalledProcessError:
+        if WIN or not shutil.which("docker"):
+            raise
+        tool = Path(BIN / "PkgTool.Core").relative_to(ROOT).as_posix()
+        out = Path(outdir).relative_to(ROOT).as_posix()
+        work = "/w/" + PKGDIR.relative_to(ROOT).as_posix()
+        print("> the same command, inside ubuntu:20.04 (its own libssl 1.1)", flush=True)
+        run(["docker", "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{ROOT}:/w",
+             "-w", work, "-e", "DOTNET_ROLL_FORWARD=Major",
+             "-e", "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1", "ubuntu:20.04", f"/w/{tool}", "pkg_build",
+             "pkg.gp4", f"/w/{out}"], env=ENV)
 
 
 def ps4_ftp(timeout=30):

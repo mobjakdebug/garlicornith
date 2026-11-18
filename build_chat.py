@@ -149,7 +149,7 @@ def main():
     if not b.WIN and not (b.SSL11 / "libssl.so.1.1").exists():
         print("warning: no libssl.so.1.1 in", b.SSL11, "-> PkgTool.Core will abort unless the system has one")
         print("         (run python pc/ci_toolchain.py to fetch it)")
-    b.pkgtool("pkg_build", "pkg.gp4", str(pkgout))
+    b.pkg_build(pkgout)
     pkg = pkgout / f"{CONTENT_ID}.pkg"
     if SLIM:   # the same app without the weights: it downloads a model on the console instead
         pkg = pkg.with_name(f"{CONTENT_ID}-slim.pkg")
