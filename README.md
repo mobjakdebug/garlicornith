@@ -338,20 +338,23 @@ Two things the Linux runners needed, both in the scripts:
   `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` covers the other half of the same problem (no ICU).
 * **A four-gigabyte package hits a LibOrbisPkg bug** ([#64](https://github.com/maxton/LibOrbisPkg/issues/64)): the
   PlayGo chunk-hash table is sized from an estimate, and at this size it comes out a chunk or two short, so
-  `pkg_build` stops with *"Playgo Chunk hash file was not allocated enough space"* — padding the package to a
-  different alignment does not help, the estimate is short by a fixed amount. The **slim** package (41 MB) is
-  unaffected and is what a console that already has the weights needs; for the all-in-one one the estimate has to be
-  fixed in the tool itself.
+  `pkg_build` stops with *"Playgo Chunk hash file was not allocated enough space"*. Padding the package to a
+  different alignment does not help — the estimate is short by a fixed amount, and both sizes move together. So
+  `pc/ci_pkgtool.py` builds **PkgTool from LibOrbisPkg's own source** (the `*.Core` projects in that repository),
+  patched to reserve a megabyte more for that table (the tool then shrinks it back to its real length), and against
+  **.NET 8**, which also removes the OpenSSL 1.1 dependency for that command. `build.py` uses the result for
+  `pkg_build` when it is there and the bundled `PkgTool.Core` otherwise; the app-only package builds either way.
 * The logs are pushed back with `permissions: contents: write`; without it the push is refused and the step still
   says "success".
 
 ## What the last run produced
 
-Run [44301955112](https://github.com/mobjakdebug/garlicornith/actions/runs/44301955112) (this branch, the run with
-the new mark, the icon and the splash, and 1.23):
+Run [44308993270](https://github.com/mobjakdebug/garlicornith/actions/runs/44308993270) — the run with the new mark,
+the icon and the splash, 1.23, and a `pkg_build` that can size a five-gigabyte package:
 
 ```
-build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg                     41 156 608   db4d3e34…2648861b8b
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg          4 900 388 864   7ac7a105…8d64b8b8e
+build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg                     42 205 184   d8556373…9e5495797c
 models/ornith-1.5-9b-q4s.bin                                 4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                                   212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                            11 312   a6487233…4f2f24b15
@@ -359,16 +362,14 @@ chat/assets_9b/mtp.idx                                                 588   32a
 chat/assets_9b/kernels.bin                                        419 052   (rebuilt from shaders/ in the job)
 ```
 
-The all-in-one package is **not** in that list: `pkg_build` now stops on LibOrbisPkg's PlayGo estimate (see the
-build notes below), so that step is allowed to fail and the log says so
-(`ci/last-run/20261118T122850Z-package/summary.txt`). The app-only package builds on every run, and the weights are
-byte-for-byte the ones the console already has — installing it over an existing install re-uses them.
+The two packages are stamped with the build's time, so their sha256 changes from run to run; the weights and the
+indexes do not. The all-in-one package carries a megabyte of padding that the patched `pkg_build` reserves for the
+PlayGo table (see the build notes), which is why both packages are a megabyte larger than the ones before.
 
-The run that first built **both** packages was
-[44271426387](https://github.com/mobjakdebug/garlicornith/actions/runs/44271426387) (commit `bbe749a`), with
-`4 898 816 000` for the all-in-one one and the same 41 MB app-only one; the run before it,
-[44173541362](https://github.com/mobjakdebug/garlicornith/actions/runs/44173541362), was the one with the panel, the
-extra API endpoints and the image pipeline.
+The run before it, [44271426387](https://github.com/mobjakdebug/garlicornith/actions/runs/44271426387) (commit
+`bbe749a`), was the last one to build both packages with the bundled tool: `4 898 816 000` and `41 156 608`, the
+same weights. [44173541362](https://github.com/mobjakdebug/garlicornith/actions/runs/44173541362) was the one with
+the panel, the extra API endpoints and the image pipeline.
 
 (The two packages are stamped with the build's time, so their sha256 changes from run to run; the weights and the
 indexes do not.)
@@ -488,6 +489,7 @@ speculative decoding report themselves unavailable instead of taking the context
 | `chat/ui.c` | the whole interface: theme, header, cards, markdown tables and code panels, keyboard, voice sheet, loading and error cards, the panel |
 | `chat/panel.inc` | the panel itself (OPTIONS): five sections — API, images, model, system, about — and the file each one writes |
 | `pc/ui_preview.c` | the same screens rendered on a PC to a PNG (`chat/ui.c` only), so the look can be checked without the console |
+| `pc/ci_pkgtool.py` | builds `PkgTool` from LibOrbisPkg's source, on .NET 8 and with the PlayGo estimate fixed — the bundled one cannot package five gigabytes |
 | `pc/make_brand.py` | the mark, the icon and the splash, drawn as geometry from the logo artwork (`chat/assets/logo.bin`, `chat/sce_sys/`); the wordmark is set in `pc/brand`'s Inter SemiBold (SIL OFL) |
 | `chat/api.c`, `chat/api_proto.c`, `chat/api_run.inc` | the OpenAI-compatible server: chat, completions, responses, models, SSE, the OpenAPI document |
 | `chat/dl.c` | the model downloader: Hugging Face's file list, `libSceHttp`, resume with `Range`, `/data/models` |
