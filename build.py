@@ -21,6 +21,9 @@ WIN = os.name == "nt"
 EXE = ".exe" if WIN else ""                       # the tools' names on Windows and on Linux
 ZIG = TOOLCHAIN / "zig" / f"zig{EXE}"
 DOTNET = TOOLCHAIN / "dotnet" / "dotnet.exe"      # Windows only: PkgTool.Core.dll runs on it there
+# PkgTool built from LibOrbisPkg's source by pc/ci_pkgtool.py (its PlayGo estimate fixed, and .NET 8 instead of
+# 3.0): when it is there, `pkg_build` uses it, because the bundled one cannot build a package of several GiB.
+PKGTOOL = TOOLCHAIN / "pkgtool" / f"PkgTool{EXE}"
 # PkgTool.Core is .NET Core 3.0: its crypto needs libssl.so.1.1, which pc/ci_toolchain.py fetches (see there)
 SSL11 = TOOLCHAIN / "libssl1.1" / "usr" / "lib" / "x86_64-linux-gnu"
 BIN = OO / ("bin/windows" if WIN else "bin/linux")
@@ -52,6 +55,9 @@ def pkgtool(*args):
     tool runs, not at import (the toolchain may be fetched after this module is read). Two ways, because the .NET
     host does not always pass LD_LIBRARY_PATH on to the process that does the work: the variable first, then the
     libraries preloaded, so they are part of the process before anything else looks for them."""
+    if args and args[0] == "pkg_build" and PKGTOOL.exists():
+        print("pkg_build with", PKGTOOL, "(LibOrbisPkg's source, PlayGo estimate fixed)", flush=True)
+        return run([PKGTOOL, *args], cwd=PKGDIR)
     if WIN:
         return run([DOTNET, BIN / "PkgTool.Core.dll", *args], cwd=PKGDIR)
     libssl, libcrypto = SSL11 / "libssl.so.1.1", SSL11 / "libcrypto.so.1.1"

@@ -242,6 +242,15 @@ jobs:
           set -o pipefail
           python pc/export_kernels_9b.py 2>&1 | tail -20
 
+      # The bundled PkgTool.Core cannot size the PlayGo table on a package of several GiB (LibOrbisPkg#64); this
+      # builds the same tool from LibOrbisPkg's source, patched and on .NET 8 (so it needs no libssl 1.1 either).
+      # When it cannot be built the bundled one is used, and then only the app-only package builds.
+      - name: a PkgTool with the PlayGo estimate fixed
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python pc/ci_pkgtool.py 2>&1 | tee pkgtool.txt
+
       - name: what the loader will see
         run: |
           set -o pipefail
