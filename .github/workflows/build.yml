@@ -27,9 +27,13 @@ on:
         type: boolean
         default: false
       push_hf:
-        description: "push the model to Hugging Face afterwards (needs the HF_TOKEN secret)"
+        description: "push the model to Hugging Face afterwards"
         type: boolean
         default: false
+      hf_token:
+        description: "Hugging Face token for this one run, used instead of the HF_TOKEN secret (the run is meant to be deleted afterwards: a token belongs in the secret, not in a run)"
+        type: string
+        default: ""
 
 permissions:
   contents: write          # the jobs publish their logs to ci/last-run/ in the branch
@@ -307,7 +311,7 @@ jobs:
       - name: push the model to Hugging Face
         if: ${{ inputs.push_hf && success() }}
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ inputs.hf_token != '' && inputs.hf_token || secrets.HF_TOKEN }}
         run: |
           set -o pipefail
           pip install -q huggingface_hub
