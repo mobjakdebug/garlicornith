@@ -57,7 +57,7 @@ Ornith-1.5-9B scores 70.6 on SWE-bench Verified, 86.4 on GPQA Diamond and 46.2 o
 ## Two packages
 
 The [1.23 release](https://github.com/mobjakdebug/garlicornith/releases/tag/v1.23) carries
-`station-ai-1.23-slim.pkg` (**42 205 184 B**), the app on its own, built and attached by this repository's workflow;
+`station-ai-1.23-slim.pkg` (**42 270 720 B**), the app on its own, built and attached by this repository's workflow;
 the all-in-one package is too large for a release asset and comes out of the workflow's artifacts.
 
 The same app, built twice by the same workflow. Both install as **Station AI** (title id `STAI00001`, content id `IV0000-STAI00001_00-STATIONAI0000001`), so one
