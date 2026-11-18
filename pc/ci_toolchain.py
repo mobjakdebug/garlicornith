@@ -113,45 +113,82 @@ def probe():
     log(f"    the system's own libssl 1.1 {'yes' if system_ssl() else 'no'}")
 
 
+def ssl11_loads(lib):
+    """Do this libssl and this libcrypto load together? They have to come from the same build: a libssl of one
+    build with the libcrypto of another does not load, and the loader only says `undefined symbol: SSL_state`. A
+    fresh interpreter is the cheapest honest test."""
+    lib = Path(lib)
+    if not (lib / "libssl.so.1.1").exists():
+        return False, "no libssl.so.1.1"
+    script = "import ctypes\nctypes.CDLL('libcrypto.so.1.1', ctypes.RTLD_GLOBAL)\nctypes.CDLL('libssl.so.1.1', ctypes.RTLD_GLOBAL)\n"
+    try:
+        r = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                           env=dict(os.environ, LD_LIBRARY_PATH=str(lib)))
+    except Exception as ex:  # noqa: BLE001
+        return False, str(ex)
+    if r.returncode == 0:
+        return True, ""
+    lines = (r.stderr or r.stdout).strip().splitlines()
+    return False, next((l.strip() for l in lines if "error" in l.lower()), lines[-1] if lines else "?")
+
+
 def libssl11():
     """PkgTool.Core is a self-contained .NET Core 3.0 binary, and its crypto layer dlopens libssl.so.1.1. Every
     distribution newer than 22.04 ships OpenSSL 3 instead, and then `PkgTool.Core pkg_build` dies with SIGABRT and
     no message at all (its other commands, which need no crypto, still work). Take the library out of a package
-    and let build.py put it on the loader's path."""
-    lib = SSL11 / "usr" / "lib" / "x86_64-linux-gnu"
+    where the loader can find it (expose_ssl11)."""
     if os.name == "nt":
         return
-    if (lib / "libssl.so.1.1").exists():
+    lib = SSL11 / "usr" / "lib" / "x86_64-linux-gnu"
+    ok, why = ssl11_loads(lib)
+    log(f"libssl 1.1 (PkgTool.Core's crypto library): {lib}")
+    log(f"  {'loads' if ok else 'does not load (' + why + ')'}")
+    if ok:
         expose_ssl11(lib)
         return
-    log("libssl 1.1 (PkgTool.Core's crypto library)")
+    names = []
     for pool in SSL11_POOLS:
         try:
             html = urllib.request.urlopen(pool, timeout=60).read().decode("utf-8", "replace")
         except Exception as ex:  # noqa: BLE001
             log(f"  {pool}: {ex}")
             continue
-        names = sorted(set(re.findall(r"libssl1\.1_[^\"'<>]*_amd64\.deb", html)))
-        if not names:
+        found = set(re.findall(r"libssl1\.1_[^\"'<>]*_amd64\.deb", html))
+        if not found:
             log(f"  {pool}: no libssl1.1 package")
             continue
-        name = names[-1]                                   # the listings are in version order
+        # the 20.04 build first (OpenSSL 1.1.1f, the one .NET Core 3.0 was built against), then the others,
+        # newest first in each group
+        order = sorted(found, reverse=True)
+        order.sort(key=lambda n: 0 if "1.1.1f" in n else 1)
+        names = [(pool, n) for n in order[:4]]
+        break
+    for pool, name in names:
         try:
             deb = download(urllib.parse.urljoin(pool, name), TOOLCHAIN / "downloads" / name)
+            tmp = TOOLCHAIN / "libssl1.1_try"
+            shutil.rmtree(tmp, ignore_errors=True)
+            tmp.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["dpkg-deb", "-x", str(deb), str(tmp)], check=True)
+            cand = tmp / "usr" / "lib" / "x86_64-linux-gnu"
+            ok, why = ssl11_loads(cand)
+            log(f"  {name}: {'loads' if ok else 'does not load (' + why + ')'}")
+            if not ok:
+                continue
             lib.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["dpkg-deb", "-x", str(deb), str(SSL11)], check=True)
-            if (lib / "libssl.so.1.1").exists():
-                log(f"  {name} -> {lib}")
-                expose_ssl11(lib)
-                return
-            log(f"  {name}: extracted, but not into {lib}")
+            for n in ("libssl.so.1.1", "libcrypto.so.1.1"):
+                shutil.copy(cand / n, lib / n)
+            shutil.rmtree(tmp, ignore_errors=True)
+            expose_ssl11(lib)
+            return
         except Exception as ex:  # noqa: BLE001
             log(f"  {name}: {ex}")
     if system_ssl():
-        log("  no copy of our own, but the system has libssl.so.1.1: PkgTool.Core can use that one")
+        log("  no usable copy of our own, but the system has libssl.so.1.1: PkgTool.Core can use that one")
         return
-    raise SystemExit("no libssl 1.1 anywhere, and PkgTool.Core cannot build a package without it:\n"
-                     "  it dlopens libssl.so.1.1 (Ubuntu 20.04 and older ship it; 22.04 and newer do not).\n"
+    raise SystemExit("no usable libssl 1.1 anywhere, and PkgTool.Core cannot build a package without it:\n"
+                     "  it dlopens libssl.so.1.1 (Ubuntu 20.04 and older ship it; 22.04 and newer do not),\n"
+                     "  and libssl and libcrypto have to come from the same build.\n"
                      "  The pools tried are SSL11_POOLS in pc/ci_toolchain.py.")
 
 
