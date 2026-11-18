@@ -6,9 +6,10 @@ Run: python build_chat.py           -> build/chat/IV0000-PSAI00001_00-PS4LOCALAI
      --no-package                   -> compile and stop (a check that the C builds, no packaging)
      --full                         -> the all-in-one package, with the weights inside: models/<file> goes to
                                        /app0/models, where the app looks first (chat/engine.c weights_locate)
-     --slim                         -> the app on its own, ~55 MB, no weights: it starts, offers "Download a model"
+     --slim                         -> the app on its own, ~41 MB, no weights: it starts, offers "Download a model"
                                        (chat/dl.c, Hugging Face) and then uses whatever it fetched into /data/models.
-                                       The package is written as <content-id>-slim.pkg so both can be built in one run.
+                                       It is written as build/chat/slim/<content-id>-slim.pkg, so a full package
+                                       built in the same folder is left alone.
 The package gets chat/assets plus the files of its model: chat/assets_9b or chat/assets_4b.
 Icon and home screen background: chat/sce_sys (pc/make_brand.py).
 Without --full the model weights are not in the package: they stay in /data (see model.idx).
@@ -143,11 +144,13 @@ def main():
     b.run([b.BIN / f"create-gp4{b.EXE}", "-out", "pkg.gp4", f"--content-id={CONTENT_ID}", "--files", " ".join(files)],
           cwd=PKGDIR)
     fix_gp4_dirs()
-    b.pkgtool("pkg_build", "pkg.gp4", str(OUT))
-    pkg = OUT / f"{CONTENT_ID}.pkg"
+    pkgout = OUT / "slim" if SLIM else OUT   # (its own folder: a slim build next to a full one keeps both)
+    pkgout.mkdir(parents=True, exist_ok=True)
+    b.pkgtool("pkg_build", "pkg.gp4", str(pkgout))
+    pkg = pkgout / f"{CONTENT_ID}.pkg"
     if SLIM:   # the same app without the weights: it downloads a model on the console instead
         pkg = pkg.with_name(f"{CONTENT_ID}-slim.pkg")
-        os.replace(OUT / f"{CONTENT_ID}.pkg", pkg)
+        os.replace(pkgout / f"{CONTENT_ID}.pkg", pkg)
     print("built", pkg, pkg.stat().st_size, "bytes")
     if "--upload" in sys.argv:
         ftp = b.ps4_ftp()

@@ -265,7 +265,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: station-ai-ps4-pkg-slim
-          path: build/chat/*-slim.pkg
+          path: build/chat/slim/*-slim.pkg
           compression-level: 0
           if-no-files-found: error
 
@@ -275,9 +275,9 @@ jobs:
           {
             echo "### station-ai (${{ github.sha }})"
             echo ""
-            ls -l build/chat/*.pkg models/*.bin chat/assets_9b/ 2>/dev/null || true
+            ls -l build/chat/*.pkg build/chat/slim/*.pkg models/*.bin chat/assets_9b/ 2>/dev/null || true
             echo ""
-            for f in build/chat/*.pkg models/*.bin chat/assets_9b/*.idx; do
+            for f in build/chat/*.pkg build/chat/slim/*.pkg models/*.bin chat/assets_9b/*.idx; do
               [ -f "$f" ] && echo "$(sha256sum "$f")"
             done
             df -h /

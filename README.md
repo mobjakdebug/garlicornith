@@ -25,7 +25,7 @@ the console's GNM GPU run a 9B model — with three things added on top of upstr
   are left after the weights, the voice model and the dictation model have theirs — 32K–64K on a Pro, logged at
   start-up.
 * **A way to get the model without a PC**: [two packages](#two-packages), one with the weights inside and one that is
-  just the app (about 36 MB) which downloads a model from Hugging Face *on the console* and resumes if the connection
+  just the app (41 MB) which downloads a model from Hugging Face *on the console* and resumes if the connection
   drops.
 
 Ornith-1.5-9B scores 70.6 on SWE-bench Verified, 86.4 on GPQA Diamond and 46.2 on Terminal-Bench 2.1, against
@@ -60,7 +60,7 @@ replaces the other — install whichever suits the console, and keep the other a
 | | `station-ai-ps4-pkg` | `station-ai-ps4-pkg-slim` |
 | --- | --- | --- |
 | What is in it | the app **and** the weights (`/app0/models`) | the app only |
-| Size | **4.9 GB** (4 898 816 000 B) | **≈ 36 MB** |
+| Size | **4.9 GB** (4 898 816 000 B) | **41 MB** (41 156 608 B) |
 | Internet needed | never | once, on first start, to fetch a model |
 | First start | loads and chats | offers *Download a model*, then chats |
 | Good for | a console with room and a fast link to the PC | a console you can drop a small file on, or one that has its own connection |
@@ -77,7 +77,7 @@ is 4.6 GB of `.bin` that the app knows how to fetch and verify by itself.
 2. Copy it to the console and install it: GoldHEN → *Settings → Debug Settings → Game → Package Installer*.
    It installs as **Station AI** (title id `PSAI00003`), next to Garlic LLM if that one is there.
 3. Room on the console's disk: about 6 GB for the full package (12 GB if you copy the package onto the console before
-   installing), about 40 MB for the slim one — plus, later, the model it downloads into `/data`.
+   installing), 41 MB for the slim one — plus, later, the model it downloads into `/data`.
 4. Launch it.
 
 **With the slim package**, the first start opens the downloader before anything else:
@@ -290,7 +290,7 @@ python pc/ornith_convert.py inspect           # optional: the metadata, the tens
 python pc/ornith_convert.py convert           # downloads the BF16 GGUF and writes the four files
 python pc/export_kernels_9b.py                # the GPU kernels from shaders/ into chat/assets_9b/kernels.bin
 python build_chat.py --full                   # 4.9 GB: build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
-python build_chat.py --slim                   # 36 MB:  …-PS4LOCALAICHAT03-slim.pkg, no weights inside
+python build_chat.py --slim                   # 41 MB:  build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg, no weights
 ```
 
 `pc/export_kernels_9b.py` is part of the build after any change in `shaders/`: the C code and the kernels have to
@@ -312,8 +312,8 @@ It keeps:
   This is the deliverable; download it from the run's page. Its sha256 is printed in the run's
   `package-logs`/`summary.txt`; it changes from build to build because `pkg_build` stamps the package with the time,
   while the weights and the two indexes do not.
-* **`station-ai-ps4-pkg-slim`** — the same app with no weights, `…-PS4LOCALAICHAT03-slim.pkg`, about 36 MB: install it
-  and let the console fetch the model.
+* **`station-ai-ps4-pkg-slim`** — the same app with no weights, `…-PS4LOCALAICHAT03-slim.pkg`, 41 156 608 B: install
+  it and let the console fetch the model.
 * `ornith-model` — the converted weights and the two indexes, for an app-only package with the weights in `/data`
 * `compile-logs`, `convert-logs`, `package-logs` — what each job printed
 
