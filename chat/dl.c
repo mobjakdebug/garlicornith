@@ -93,6 +93,16 @@ static void dl_progress(float frac, const char* line) {
     present();
 }
 
+// The code the last failure left behind (an Orbis error, or an HTTP status), shown beside the message: a report
+// from a console is a photograph of this screen, so the number has to be on it.
+static unsigned dl_code;
+static void dl_note(const char* msg);
+static void dl_note_code(const char* msg, unsigned code) {
+    char line[320];
+    snprintf(line, sizeof(line), "%s [%08X]", msg, code);
+    dl_note(line);
+}
+
 // A message on the screen for a second, and in the log: the player sees why nothing started.
 static void dl_note(const char* msg) {
     say("dl: %s", msg);
@@ -182,31 +192,36 @@ static int net_up(void) {
     sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_SSL);
     int r = sceNetInit();   // (0, or already up: the API may have started it)
     say("dl: sceNetInit 0x%08X", (unsigned)r);
+    if (r < 0) dl_code = (unsigned)r;
     if (net_pool <= 0) net_pool = sceNetPoolCreate("station_ai_dl", 256 * 1024, 0);
     if (net_pool < 0) {
         say("dl: sceNetPoolCreate 0x%08X", (unsigned)net_pool);
+        dl_code = (unsigned)net_pool;
         return -1;
     }
     if (ssl_ctx <= 0) ssl_ctx = sceSslInit(SSL_POOLSIZE);
     if (ssl_ctx < 0) {
         say("dl: sceSslInit 0x%08X", (unsigned)ssl_ctx);
+        dl_code = (unsigned)ssl_ctx;
         return -1;
     }
     if (http_ctx <= 0) http_ctx = sceHttpInit(net_pool, ssl_ctx, LIBHTTP_POOLSIZE);
     if (http_ctx < 0) {
         say("dl: sceHttpInit 0x%08X", (unsigned)http_ctx);
+        dl_code = (unsigned)http_ctx;
         return -1;
     }
     tpl = sceHttpCreateTemplate(http_ctx, "Station AI/1.23 (PLAYSTATION 4)", ORBIS_HTTP_VERSION_1_1, 1);
     if (tpl < 0) {
         say("dl: sceHttpCreateTemplate 0x%08X", (unsigned)tpl);
+        dl_code = (unsigned)tpl;
         return -1;
     }
     sceHttpsSetSslCallback(tpl, ssl_skip, NULL);
-    sceHttpSetConnectTimeOut(tpl, 20 * 1000000);
+    sceHttpSetConnectTimeOut(tpl, 10 * 1000000);   // ten seconds to answer, or the screen says why
     // (the header declares this with no prototype, as it does some others: the SDK's call takes the template and usec)
-    sceHttpSetRecvTimeOut(tpl, 120 * 1000000);   // a read that waits longer than two minutes is a dead connection
-                                                 // (and an image backend has answered by then, or it has not)
+    sceHttpSetRecvTimeOut(tpl, 15 * 1000000);    // fifteen seconds of silence is a dead connection, and the
+                                                 // download screen shows the code rather than waiting for ever
     say("dl: HTTP client ready (net pool %d, ssl %d, http %d, template %d)", net_pool, ssl_ctx, http_ctx, tpl);
     return 0;
 }
@@ -312,6 +327,7 @@ static char* http_text(const char* url, size_t* len, int* err) {
         say("dl: %s -> HTTP %d", url, st);
         sceHttpDeleteRequest(req);
         *err = -st;
+        dl_code = (unsigned)st;
         return NULL;
     }
     size_t cap = 1 << 16, n = 0;
@@ -446,7 +462,10 @@ static int dl_parse(const char* js, size_t n, DlFile* files, int* nf, uint64_t* 
         if (js[i] != '{') continue;
         uint64_t size = 0;
         char path[160] = "";
-        for (size_t j = i + 1; j < n && js[j] != '}'; j++) {
+        int depth = 0;
+        for (size_t j = i + 1; j < n; j++) {
+            if (js[j] == '{') depth++;
+            else if (js[j] == '}' && depth-- == 0) break;   // (the entry's own brace: "lfs" nests one)
             if (!strncmp(js + j, "\"size\":", 7)) {
                 j += 7;
                 while (js[j] == ' ') j++;
@@ -534,6 +553,7 @@ static int dl_file(const char* url, const char* path, uint64_t size, uint64_t* d
         int n = sceHttpReadData(req, buf, DL_CHUNK);
         if (n < 0) {
             say("dl: read error 0x%08X at %llu of %s", (unsigned)n, (unsigned long long)got, path);
+            dl_code = (unsigned)n;
             r = -1;
             break;
         }
@@ -571,6 +591,56 @@ static int dl_file(const char* url, const char* path, uint64_t size, uint64_t* d
     *done += size;
     say("dl: %s: %llu bytes", path, (unsigned long long)size);
     return 0;
+}
+
+// ---- the file list taken from the index itself ---------------------------------------------------------------
+// model.idx and mtp.idx carry the name and the size of the weights file they describe (a 128-byte path at 52, the
+// size at 180, see chat/engine.c), so two small GETs say everything the API's JSON would. That is the second way
+// in: an API that is blocked, changed or slow no longer stops a download, and the file that names a weight is the
+// file itself, so the two can never disagree.
+static int dl_idx_add(DlFile* files, int* nf, uint64_t* total, const char* name, uint64_t size) {
+    if (!size || *nf >= DL_MAX_FILES) return 0;
+    snprintf(files[*nf].path, sizeof(files[*nf].path), "%s", name);
+    files[*nf].size = size;
+    *total += size;
+    (*nf)++;
+    return 1;
+}
+
+static int dl_plan_from_idx(const char* repo, DlFile* files, int* nf, uint64_t* total) {
+    static const char* idx[2] = {"model.idx", "mtp.idx"};
+    *nf = 0;
+    *total = 0;
+    for (int i = 0; i < 2; i++) {
+        char url[700];
+        snprintf(url, sizeof(url), DL_RESOLVE, repo, idx[i]);
+        size_t n = 0;
+        int err = 0;
+        char* d = http_text(url, &n, &err);
+        if (!d) {
+            say("dl: %s: no answer (0x%08X)", idx[i], (unsigned)err);
+            if (i == 0) {
+                dl_code = (unsigned)(err < 0 ? -err : err);
+                return -1;
+            }
+            continue;   // (no draft head in this repository: the weights alone are a model)
+        }
+        if (n > 188 && (!memcmp(d, "PMDL", 4) || !memcmp(d, "PMQ5", 4))) {
+            char name[129];
+            uint64_t size = 0;
+            memcpy(name, d + 52, 128);
+            name[128] = 0;
+            memcpy(&size, d + 180, 8);
+            if (dl_idx_add(files, nf, total, idx[i], (uint64_t)n))   // the index last, as the API's order does
+                say("dl: %s names %s (%llu bytes)", idx[i], name, (unsigned long long)size);
+            dl_idx_add(files, nf, total, name, size);
+        } else {
+            say("dl: %s is not an index of this app's", idx[i]);
+            if (i == 0) return -1;
+        }
+        free(d);
+    }
+    return *nf ? 0 : -1;
 }
 
 // ---- the whole thing ----------------------------------------------------------------------------------------
@@ -619,8 +689,9 @@ int dl_run(void) {
         close(fd);
     }
     dl_progress(0.0f, dl_tr(DL_T_CONNECT));
+    dl_code = 0;
     if (net_up()) {
-        dl_note(dl_tr(DL_T_NET));
+        dl_note_code(dl_tr(DL_T_NET), dl_code);
         return 0;
     }
     char url[700];
@@ -637,13 +708,18 @@ int dl_run(void) {
         free(js);
     }
     say("dl: %d files, %llu bytes%s", nf, (unsigned long long)total, err ? " (the request failed)" : "");
-    if (!nf) {
-        // A 4xx from the API (a name that is not there, or a repository that is not public) is not a network fault:
-        // the two used to be the same message, which sent the player looking at the router.
-        int missing = err < -400 && err > -600;
-        say("dl: nothing to fetch (%s)", missing ? "the repository is not there" : err ? "the request failed" : "no .bin");
-        dl_note(dl_tr(missing || !err ? DL_T_NONE : DL_T_NET));
-        return 0;
+    if (!nf) {   // the API said nothing useful: the index itself knows what it needs
+        say("dl: the API gave no list (0x%08X); asking the index", (unsigned)err);
+        dl_progress(0.0f, dl_tr(DL_T_LIST));
+        if (dl_plan_from_idx(repo, files, &nf, &total)) {
+            // A 4xx from the API (a name that is not there, or a repository that is not public) is not a network
+            // fault: the two used to be the same message, which sent the player looking at the router.
+            int missing = dl_code > 0x80000000u ? 0 : (dl_code >= 400 && dl_code < 600);
+            say("dl: nothing to fetch (%s)", missing ? "the repository is not there" : "no answer");
+            dl_note_code(dl_tr(missing ? DL_T_NONE : DL_T_NET), dl_code);
+            return 0;
+        }
+        say("dl: the index gave %d file(s), %llu bytes", nf, (unsigned long long)total);
     }
     int have_idx = 0;
     for (int i = 0; i < nf; i++) have_idx |= dl_is_idx(files[i].path);

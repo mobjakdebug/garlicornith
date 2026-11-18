@@ -63,6 +63,7 @@ static inline uint32_t mix(uint32_t a, uint32_t b, float t) {
 }
 
 int ui_lang = LANG_ES;
+int ui_swap_buttons;   // set at start-up by main(): /data/station_buttons.txt, else the console's language
 const char* ui_error = "";
 
 // ---- strings ---------------------------------------------------------------------------------------------------
@@ -145,6 +146,9 @@ static const char* strings[N_STRINGS][N_LANGS] = {
     [S_P_DOWNLOAD] = {"Descargar un modelo", "Download a model", "Baixar um modelo", "Скачать модель"},
     [S_P_CLEAR_CHAT] = {"Borrar la conversación", "Clear the conversation", "Apagar a conversa",
                         "Очистить разговор"},
+    [S_P_BUTTONS] = {"Botones", "Buttons", "Botões", "Кнопки"},
+    [S_P_X_ENTER] = {"X entra", "X enters", "X entra", "X — вход"},
+    [S_P_O_ENTER] = {"O entra", "O enters", "O entra", "O — вход"},
     [S_P_VERSION] = {"Versión", "Version", "Versão", "Версия"},
     [S_P_SECTION] = {"Sección", "Section", "Seção", "Раздел"},
     [S_P_CHANGE] = {"Cambiar", "Change", "Mudar", "Изменить"},
@@ -1484,10 +1488,14 @@ static int draw_btn(int btn, int x, int cy) {
         circle(cx, cy, d * 0.5f, 1.2f, C_LINE_HI, 255);
         switch (btn) {
         case BTN_CROSS:
-            line(cx - 6.5f, cy - 6.5f, cx + 6.5f, cy + 6.5f, 3.2f, C_CROSS, 255);
-            line(cx - 6.5f, cy + 6.5f, cx + 6.5f, cy - 6.5f, 3.2f, C_CROSS, 255);
+        case BTN_CIRCLE:   // one is drawn as the other when the console enters with O: the hint says what to press
+            if ((btn == BTN_CROSS) != (ui_swap_buttons != 0))
+                circle(cx, cy, 8.5f, 3.0f, C_CIRCLE, 255);
+            else {
+                line(cx - 6.5f, cy - 6.5f, cx + 6.5f, cy + 6.5f, 3.2f, C_CROSS, 255);
+                line(cx - 6.5f, cy + 6.5f, cx + 6.5f, cy - 6.5f, 3.2f, C_CROSS, 255);
+            }
             break;
-        case BTN_CIRCLE: circle(cx, cy, 8.5f, 3.0f, C_CIRCLE, 255); break;
         case BTN_TRIANGLE:
             line(cx, cy - 8, cx + 8.5f, cy + 6, 2.8f, C_TRIANGLE, 255);
             line(cx + 8.5f, cy + 6, cx - 8.5f, cy + 6, 2.8f, C_TRIANGLE, 255);

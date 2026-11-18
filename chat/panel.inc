@@ -6,6 +6,7 @@
 // R1/L1 change section, Cross opens or flips what is under it, L2/R2 change a number or a choice, Circle returns.
 
 #define PANEL_LANG_FILE "/data/station_lang.txt"
+#define PANEL_BUTTONS_FILE "/data/station_buttons.txt"   // "1": O enters and X goes back, as a Japanese console does
 #define PANEL_IMAGES_FILE "/data/station_images.json"
 #define PANEL_KEY_FILE "/data/garlic_api_key.txt"
 #define PANEL_THINK_FILE "/data/garlic_think.txt"
@@ -162,6 +163,7 @@ static void panel_build(PanelView* pv, int tab, int sel) {
         panel_row(pv, S_P_LANGUAGE, panel_lang_name(ui_lang), PANEL_STEP, 0);
         panel_row(pv, S_P_DOWNLOAD, "", PANEL_ACTION, 0);
         panel_row(pv, S_P_CLEAR_CHAT, "", PANEL_ACTION, 0);
+        panel_row(pv, S_P_BUTTONS, ui_swap_buttons ? tr(S_P_O_ENTER) : tr(S_P_X_ENTER), PANEL_STEP, 0);
         pv->status = PANEL_LANG_FILE;
         pv->tip[0] = "/data/garlic_api_port.txt   the port the API listens on";
         pv->tip[1] = "/data/garlic_api_key.txt    the key, if one is set";
@@ -263,6 +265,12 @@ static void panel_act(int tab, int sel, int dir) {
             msgs_clear();
             pos = 0, need_close = 0, view.scroll = 0;
             toast(S_NEW_CHAT);
+        } else if (sel == 3 && dir) {
+            ui_swap_buttons = !ui_swap_buttons;   // (the hints on screen swap with it: draw_btn)
+            char line[8];
+            int k = snprintf(line, sizeof(line), "%d\n", ui_swap_buttons);
+            panel_write(PANEL_BUTTONS_FILE, line, (size_t)k);
+            say("panel: buttons %s enters", ui_swap_buttons ? "O" : "X");
         }
     }
 }

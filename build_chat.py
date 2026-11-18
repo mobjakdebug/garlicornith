@@ -1,6 +1,6 @@
 """Build Station AI (chat/*.c + MicroPython + chat/assets) as a fake PKG with the OpenOrbis toolchain (build.py).
 
-Run: python build_chat.py           -> build/chat/IV0000-PSAI00001_00-PS4LOCALAICHAT01.pkg ("Station AI", Qwen3.5-9B)
+Run: python build_chat.py           -> build/chat/IV0000-STAI00001_00-STATIONAI0000001.pkg ("Station AI")
      python build_chat.py --4b      -> "Station AI 4B" (PSAI00002), a second app that installs next to the first
      --upload                       -> also copies the package to the console (/data/pkg/), see PS4_IP in build.py
      --no-package                   -> compile and stop (a check that the C builds, no packaging)
@@ -29,7 +29,10 @@ if "--4b" in sys.argv:
     TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI 4B", "1.17", "PSAI00002", "02"
     REMOTE = "/data/pkg/Station-AI-4B.pkg"
 else:
-    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.23", "PSAI00003", "03"
+    # The title id and the content id are this app's own: GoldHEN refuses a package whose content id it has seen
+    # before, and Garlic LLM's was in the same family (IV0000-..._00-PS4LOCALAICHAT..). Nothing here shares a
+    # string with it any more, so Station AI and Garlic LLM install side by side, in either order.
+    TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.23", "STAI00001", "STATIONAI0000001"
     REMOTE = "/data/pkg/Station-AI.pkg"
 FULL = "--full" in sys.argv
 SLIM = "--slim" in sys.argv
@@ -40,7 +43,7 @@ NO_PACKAGE = "--no-package" in sys.argv
 # pc/convert_chatterbox_*.py write; they are not converted here, and the app says "not available" without them.
 FULL_MODELS = (["qwen3.5-4b-q4i.bin"] if "--4b" in sys.argv else ["ornith-1.5-9b-q4s.bin", "ornith-1.5-9b-mtp.bin"])
 VOICE_MODELS = ["parakeet-v3-q4i.bin", "chatterbox-t3.bin", "chatterbox-s3gen-mf.bin"]
-CONTENT_ID = f"IV0000-{TITLE_ID}_00-PS4LOCALAICHAT{SUFFIX}"
+CONTENT_ID = f"IV0000-{TITLE_ID}_00-{SUFFIX}"   # 36 characters: the form PkgTool.Core takes
 SOURCES = sorted((ROOT / "chat").glob("*.c"))
 MP = ROOT / "chat" / "py" / "mp"
 MP_SOURCES = sorted([*(MP / "py").glob("*.c"), *(MP / "extmod").glob("*.c"), *(MP / "shared" / "runtime").glob("*.c"),

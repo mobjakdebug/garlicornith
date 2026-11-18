@@ -18,6 +18,10 @@ int ui_user_id(void);                                // the console's user, for 
 // ---- languages: chosen from the console's system language ----
 enum { LANG_ES, LANG_EN, LANG_PT, LANG_RU, N_LANGS };
 extern int ui_lang;
+// The console's own button convention. Most consoles enter with X and go back with O; a Japanese one does the
+// opposite, and the system's own keyboard obeys it. Everything this app draws and reads follows this too, so
+// the hints on screen and the buttons under the fingers never disagree.
+extern int ui_swap_buttons;
 int lang_from_system(int system_lang);   // OrbisSystemParamLanguage -> LANG_*
 
 typedef enum {
@@ -32,7 +36,8 @@ typedef enum {
     S_API_ON, S_API_OFF, S_API_FAILED, S_API_BUSY, S_API_DONE, S_IMG_WAIT, S_PY_IMAGE,
     S_PANEL, S_P_TAB_API, S_P_TAB_IMAGES, S_P_TAB_MODEL, S_P_TAB_SYSTEM, S_P_ON, S_P_OFF, S_P_ENABLED,
     S_P_ADDRESS, S_P_PORT, S_P_KEY, S_P_NO_KEY, S_P_SET, S_P_CLEAR, S_P_REQUESTS, S_P_BACKEND, S_P_FOLDER,
-    S_P_THINK_CAP, S_P_LANGUAGE, S_P_DOWNLOAD, S_P_CLEAR_CHAT, S_P_VERSION, S_P_SECTION, S_P_CHANGE, S_P_OPEN,
+    S_P_THINK_CAP, S_P_LANGUAGE, S_P_DOWNLOAD, S_P_CLEAR_CHAT, S_P_BUTTONS, S_P_X_ENTER, S_P_O_ENTER,
+    S_P_VERSION, S_P_SECTION, S_P_CHANGE, S_P_OPEN,
     S_P_BACK, S_P_NOTHING, S_P_SAVED, S_P_ENGINE, S_P_MOVE, S_P_MEM, S_P_KERNELS, S_P_ABOUT, S_MODEL_LABEL,
     S_P_THINKING, S_P_CONTEXT,
     N_STRINGS
