@@ -85,7 +85,9 @@ is 4.6 GB of `.bin` that the app knows how to fetch and verify by itself.
 **With the slim package**, the first start opens the downloader before anything else:
 
 * type a repository — `user/model`, or the whole `https://huggingface.co/user/model` — with the on-screen keyboard
-  (or a USB keyboard, if there is one);
+  (or a USB keyboard, if there is one). The model this build is made for lives at
+  [`officialmobai/station-9b`](https://huggingface.co/officialmobai/station-9b): `4 641 752 088` B of 4-bit weights
+  plus its draft head and two indexes, and the card there says what each file is;
 * it reads the repository's file list and fetches only the files the app can run: a `model.idx` and its `.bin`;
 * the download goes to `/data/models/<repo>/`, file by file through `<name>.part`, and a dropped connection resumes
   with `Range: bytes=<what is there>-` on the next attempt;
@@ -489,6 +491,7 @@ speculative decoding report themselves unavailable instead of taking the context
 | `chat/ui.c` | the whole interface: theme, header, cards, markdown tables and code panels, keyboard, voice sheet, loading and error cards, the panel |
 | `chat/panel.inc` | the panel itself (OPTIONS): five sections — API, images, model, system, about — and the file each one writes |
 | `pc/ui_preview.c` | the same screens rendered on a PC to a PNG (`chat/ui.c` only), so the look can be checked without the console |
+| `pc/push_to_hf.py` | uploads the weights, the indexes and the model card (`hf/README.md`) to Hugging Face, creating the repository if it is not there |
 | `pc/ci_pkgtool.py` | builds `PkgTool` from LibOrbisPkg's source, on .NET 8 and with the PlayGo estimate fixed — the bundled one cannot package five gigabytes |
 | `pc/make_brand.py` | the mark, the icon and the splash, drawn as geometry from the logo artwork (`chat/assets/logo.bin`, `chat/sce_sys/`); the wordmark is set in `pc/brand`'s Inter SemiBold (SIL OFL) |
 | `chat/api.c`, `chat/api_proto.c`, `chat/api_run.inc` | the OpenAI-compatible server: chat, completions, responses, models, SSE, the OpenAPI document |
