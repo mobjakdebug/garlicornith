@@ -6,6 +6,9 @@ Run: python build_chat.py           -> build/chat/IV0000-PSAI00001_00-PS4LOCALAI
      --no-package                   -> compile and stop (a check that the C builds, no packaging)
      --full                         -> the all-in-one package, with the weights inside: models/<file> goes to
                                        /app0/models, where the app looks first (chat/engine.c weights_locate)
+     --slim                         -> the app on its own, ~55 MB, no weights: it starts, offers "Download a model"
+                                       (chat/dl.c, Hugging Face) and then uses whatever it fetched into /data/models.
+                                       The package is written as <content-id>-slim.pkg so both can be built in one run.
 The package gets chat/assets plus the files of its model: chat/assets_9b or chat/assets_4b.
 Icon and home screen background: chat/sce_sys (pc/make_brand.py).
 Without --full the model weights are not in the package: they stay in /data (see model.idx).
@@ -28,6 +31,7 @@ else:
     TITLE, VERSION, TITLE_ID, SUFFIX = "Station AI", "1.22", "PSAI00003", "03"
     REMOTE = "/data/pkg/Station-AI.pkg"
 FULL = "--full" in sys.argv
+SLIM = "--slim" in sys.argv
 NO_PACKAGE = "--no-package" in sys.argv
 # the weights of the all-in-one package (the names the .idx files give, see weights_locate)
 # 4B: Qwen3.5-4B. 9B (this app): Ornith-1.5-9B, converted by pc/ornith_convert.py. The voice and dictation weights
@@ -141,6 +145,9 @@ def main():
     fix_gp4_dirs()
     b.pkgtool("pkg_build", "pkg.gp4", str(OUT))
     pkg = OUT / f"{CONTENT_ID}.pkg"
+    if SLIM:   # the same app without the weights: it downloads a model on the console instead
+        pkg = pkg.with_name(f"{CONTENT_ID}-slim.pkg")
+        os.replace(OUT / f"{CONTENT_ID}.pkg", pkg)
     print("built", pkg, pkg.stat().st_size, "bytes")
     if "--upload" in sys.argv:
         ftp = b.ps4_ftp()

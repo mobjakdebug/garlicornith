@@ -4,7 +4,9 @@ name: build-station-ai-ps4
 #
 #   compile:  install the toolchain and compile the app (no weights needed) -- a fast check of the C code
 #   convert:  download the model's GGUF and convert it to the PS4's formats (kept in the Actions cache after)
-#   package:  build the all-in-one package with the weights inside, and keep it as an artifact
+#   package:  build two packages and keep them as artifacts:
+#               station-ai-ps4-pkg       the all-in-one one, with the weights inside (~4.6 GiB)
+#               station-ai-ps4-pkg-slim  the app on its own (~55 MB): it downloads a model on the console
 #
 # Push a change to ci/build, or run the workflow by hand (it takes what the inputs say).
 #
@@ -241,6 +243,32 @@ jobs:
           set -o pipefail
           python build_chat.py --full 2>&1 | tee package.txt
 
+      - name: keep the package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: station-ai-ps4-pkg
+          path: build/chat/*.pkg
+          compression-level: 0
+          if-no-files-found: error
+
+      # The same app, with no weights in it: on first start it offers to download a model from Hugging Face
+      # (chat/dl.c) and from then on runs from /data/models. This is the one to hand to someone who has not got
+      # 4.6 GB of package to move around, and the one that proves the downloader works.
+      - name: build the app-only package (no weights)
+        run: |
+          set -o pipefail
+          python build_chat.py --slim 2>&1 | tee slim.txt
+
+      - name: keep the app-only package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: station-ai-ps4-pkg-slim
+          path: build/chat/*-slim.pkg
+          compression-level: 0
+          if-no-files-found: error
+
       - name: what was built
         if: always()
         run: |
@@ -254,15 +282,6 @@ jobs:
             done
             df -h /
           } | tee summary.txt
-
-      - name: keep the package
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: station-ai-ps4-pkg
-          path: build/chat/*.pkg
-          compression-level: 0
-          if-no-files-found: error
 
       - name: keep the logs
         if: always()
