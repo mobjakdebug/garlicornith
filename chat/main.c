@@ -292,6 +292,12 @@ static uint32_t read_buttons(void) {
     if (pd.leftStick.x > 205) b |= ORBIS_PAD_BUTTON_RIGHT;
     if (pd.leftStick.y < 50) b |= ORBIS_PAD_BUTTON_UP;
     if (pd.leftStick.y > 205) b |= ORBIS_PAD_BUTTON_DOWN;
+    if (ui_swap_buttons) {   // a console that enters with O: the two exchange places, once, here and nowhere else
+        uint32_t x = b & ORBIS_PAD_BUTTON_CROSS, o = b & ORBIS_PAD_BUTTON_CIRCLE;
+        b &= ~(ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE);
+        if (x) b |= ORBIS_PAD_BUTTON_CIRCLE;
+        if (o) b |= ORBIS_PAD_BUTTON_CROSS;
+    }
     return b;
 }
 
@@ -1888,7 +1894,16 @@ int main(void) {
         if (l >= 0 && l < N_LANGS) ui_lang = l;
     }
     free(lf);
-    say("user %d, pad %d, system language %d -> ui %d", user_id, g_pad, lang, ui_lang);
+    // Which button is "enter" on this console: a Japanese one enters with O and goes back with X, and the system's
+    // own keyboard follows that, so this app does too (the panel has the row for consoles that differ from their
+    // region: System -> Buttons). /data/station_buttons.txt holds "1" for O enters, "0" for X enters.
+    ui_swap_buttons = (lang == 0);   // (SCE_SYSTEM_PARAM_LANG_JAPANESE = 0: the one console family that swaps)
+    size_t bn = 0;
+    char* bf = (char*)read_all(PANEL_BUTTONS_FILE, &bn);
+    if (bf && bn) ui_swap_buttons = bf[0] == '1';
+    free(bf);
+    say("user %d, pad %d, system language %d -> ui %d; buttons: %s enters", user_id, g_pad, lang, ui_lang,
+        ui_swap_buttons ? "O" : "X");
     int vr = video_init();
     if (vr) {
         say("video init failed: %d", vr);

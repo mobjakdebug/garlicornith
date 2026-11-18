@@ -60,7 +60,7 @@ The [1.23 release](https://github.com/mobjakdebug/garlicornith/releases/tag/v1.2
 `station-ai-1.23-slim.pkg` (**42 205 184 B**), the app on its own, built and attached by this repository's workflow;
 the all-in-one package is too large for a release asset and comes out of the workflow's artifacts.
 
-The same app, built twice by the same workflow. Both install as **Station AI** (title id `PSAI00003`), so one
+The same app, built twice by the same workflow. Both install as **Station AI** (title id `STAI00001`, content id `IV0000-STAI00001_00-STATIONAI0000001`), so one
 replaces the other — install whichever suits the console, and keep the other as a fallback.
 
 | | `station-ai-ps4-pkg` | `station-ai-ps4-pkg-slim` |
@@ -81,7 +81,9 @@ is 4.6 GB of `.bin` that the app knows how to fetch and verify by itself.
 1. Download the package from the run's page — **Artifacts** → `station-ai-ps4-pkg` (with the model) or
    `station-ai-ps4-pkg-slim` (without).
 2. Copy it to the console and install it: GoldHEN → *Settings → Debug Settings → Game → Package Installer*.
-   It installs as **Station AI** (title id `PSAI00003`), next to Garlic LLM if that one is there.
+   It installs as **Station AI** (title id `STAI00001`), next to Garlic LLM if that one is there: the title id
+   and the content id are its own, so GoldHEN installs the two in either order and neither calls the other a
+   reinstall.
 3. Room on the console's disk: about 6 GB for the full package (12 GB if you copy the package onto the console before
    installing), 41 MB for the slim one — plus, later, the model it downloads into `/data`.
 4. Launch it.
@@ -95,7 +97,9 @@ is 4.6 GB of `.bin` that the app knows how to fetch and verify by itself.
   The model this build is made for lives at
   [`officialmobai/station-9b`](https://huggingface.co/officialmobai/station-9b): `4 641 752 088` B of 4-bit weights
   plus its draft head and two indexes, and the card there says what each file is;
-* it reads the repository's file list and fetches only the files the app can run: a `model.idx` and its `.bin`;
+* it reads the repository's file list and fetches only the files the app can run: a `model.idx` and its `.bin` —
+  through Hugging Face's tree API, and if that answers with nothing, straight from the index itself, which carries
+  the name and the size of the weights file it describes;
 * the download goes to `/data/models/<repo>/`, file by file through `<name>.part`, and a dropped connection resumes
   with `Range: bytes=<what is there>-` on the next attempt;
 * when it is done the app loads that model immediately, and from then on `/data/station_model.txt` sends it back there.
@@ -301,8 +305,8 @@ python pc/ci_toolchain.py                     # OpenOrbis PS4 toolchain + Zig in
 python pc/ornith_convert.py inspect           # optional: the metadata, the tensor map, the checks
 python pc/ornith_convert.py convert           # downloads the BF16 GGUF and writes the four files
 python pc/export_kernels_9b.py                # the GPU kernels from shaders/ into chat/assets_9b/kernels.bin
-python build_chat.py --full                   # 4.9 GB: build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg
-python build_chat.py --slim                   # 41 MB:  build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg, no weights
+python build_chat.py --full                   # 4.9 GB: build/chat/IV0000-STAI00001_00-STATIONAI0000001.pkg
+python build_chat.py --slim                   # 42 MB:  build/chat/slim/…-STATIONAI0000001-slim.pkg, no weights
 ```
 
 `pc/export_kernels_9b.py` is part of the build after any change in `shaders/`: the C code and the kernels have to
@@ -320,11 +324,11 @@ so that a failure is quick to place and cheap to repeat:
 
 It keeps:
 
-* **`station-ai-ps4-pkg`** — the all-in-one package, `IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg`, the weights inside.
+* **`station-ai-ps4-pkg`** — the all-in-one package, `IV0000-STAI00001_00-STATIONAI0000001.pkg`, the weights inside.
   This is the deliverable; download it from the run's page. Its sha256 is printed in the run's
   `package-logs`/`summary.txt`; it changes from build to build because `pkg_build` stamps the package with the time,
   while the weights and the two indexes do not.
-* **`station-ai-ps4-pkg-slim`** — the same app with no weights, `…-PS4LOCALAICHAT03-slim.pkg`, 41 156 608 B: install
+* **`station-ai-ps4-pkg-slim`** — the same app with no weights, `…-STATIONAI0000001-slim.pkg`, 42 205 184 B: install
   it and let the console fetch the model.
 * `ornith-model` — the converted weights and the two indexes, for an app-only package with the weights in `/data`
 * `compile-logs`, `convert-logs`, `package-logs` — what each job printed
@@ -363,8 +367,8 @@ Run [44308993270](https://github.com/mobjakdebug/garlicornith/actions/runs/44308
 the icon and the splash, 1.23, and a `pkg_build` that can size a five-gigabyte package:
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg          4 900 388 864   7ac7a105…8d64b8b8e
-build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg                     42 205 184   d8556373…9e5495797c
+build/chat/IV0000-STAI00001_00-STATIONAI0000001.pkg          4 900 388 864   7ac7a105…8d64b8b8e
+build/chat/slim/…-STATIONAI0000001-slim.pkg                     42 205 184   d8556373…9e5495797c
 models/ornith-1.5-9b-q4s.bin                                 4 641 752 088   a0a1bbdf…37cbe30fc
 models/ornith-1.5-9b-mtp.bin                                   212 420 608   e050b25f…72d93cd53
 chat/assets_9b/model.idx                                            11 312   a6487233…4f2f24b15

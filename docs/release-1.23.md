@@ -34,6 +34,23 @@ instead of sending you back to the menu.
 it is tall, so eleven pixels of it ran over the rounded tile's right border and one under its bottom edge. The
 asset is now cropped to the mark's ink and centred by its real box, in the header and on the loading card's circle.
 
+**The file list has a second way in.** The downloader used to depend on Hugging Face's tree API for the names and
+sizes of the files. It now falls back to the index itself: `model.idx` carries the name and the size of the weights
+file it describes (a 128-byte path at byte 52, the size at 180), so two small GETs on `/resolve/main/` are enough to
+know what to fetch — the API being blocked, changed or slow no longer stops a download. The request's own limits are
+ten seconds to connect and fifteen to answer, and whatever code comes back is printed on the download screen next to
+the message (a photograph of that screen is the whole report).
+
+**Your console's own buttons.** Most consoles enter with **✕** and go back with **○**; a Japanese one does the
+opposite, and the system's keyboard obeys it, which made this app's hints look swapped. The app now follows the
+console — taken from its language on first start — and **OPTIONS → System → Buttons** changes it if the guess is
+wrong. One switch, read where the pad is read and where the hints are drawn, so nothing on screen disagrees with the
+button under your finger.
+
+**A title of its own.** The package is `IV0000-STAI00001_00-STATIONAI0000001` now (title id `STAI00001`): GoldHEN
+refused it as "the same content" as Garlic LLM, whose content id shared the old suffix. The two install side by side,
+in either order.
+
 **Usable errors.** A `4xx` from the API (a repository that is not there, or one that is not public) used to be
 reported as "no connection"; it now says the repository is not there, and logs the code. The API's status, every
 `Range` resume, every redirect and the read error, if any, are in `/data/station_ai_log.txt`.
@@ -52,7 +69,7 @@ too large for a release asset (GitHub's limit is 2 GiB a file): run **Actions �
 workflow** and take `station-ai-ps4-pkg` from the run's artifacts, or install the slim package and let it fetch
 the model. The asset above is attached by that workflow (`release_tag`), so it is the binary this page describes.
 
-Both install as **Station AI** (title id `PSAI00003`, content id `IV0000-PSAI00003_00-PS4LOCALAICHAT03`), so one
+Both install as **Station AI** (title id `STAI00001`, content id `IV0000-STAI00001_00-STATIONAI0000001`), so one
 replaces the other.
 
 ## Installing
