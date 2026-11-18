@@ -81,14 +81,14 @@ def pkg_build(outdir):
     except subprocess.CalledProcessError:
         if WIN or not shutil.which("docker"):
             raise
-        tool = Path(BIN / "PkgTool.Core").relative_to(ROOT).as_posix()
-        out = Path(outdir).relative_to(ROOT).as_posix()
-        work = "/w/" + PKGDIR.relative_to(ROOT).as_posix()
+        # the same absolute paths inside the container (OpenOrbis' bin/linux is a symlink into the toolchain, so
+        # nothing may move)
         print("> the same command, inside ubuntu:20.04 (its own libssl 1.1)", flush=True)
-        run(["docker", "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{ROOT}:/w",
-             "-w", work, "-e", "DOTNET_ROLL_FORWARD=Major",
-             "-e", "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1", "ubuntu:20.04", f"/w/{tool}", "pkg_build",
-             "pkg.gp4", f"/w/{out}"], env=ENV)
+        run(["docker", "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{ROOT}:{ROOT}",
+             "-w", str(PKGDIR), "-e", "DOTNET_ROLL_FORWARD=Major",
+             "-e", "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1", "ubuntu:20.04",
+             str(Path(BIN / "PkgTool.Core").resolve()), "pkg_build", "pkg.gp4", str(Path(outdir).resolve())],
+            env=ENV)
 
 
 def ps4_ftp(timeout=30):
