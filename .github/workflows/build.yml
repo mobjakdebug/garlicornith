@@ -14,6 +14,7 @@ name: build-station-ai-ps4
 # everywhere (the artifact and log endpoints of Actions are not always reachable).
 on:
   push:
+    branches: ["**"]        # a branch, not a tag: pushing a release tag is not a reason to build again
     paths: ["ci/build"]
   workflow_dispatch:
     inputs:
