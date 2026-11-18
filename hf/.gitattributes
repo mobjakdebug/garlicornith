@@ -1,0 +1,4 @@
+# The weights and the indexes are binaries; the card and this file are all that a git clone of the model needs.
+*.bin filter=lfs diff=lfs merge=lfs -text
+*.idx filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text

@@ -26,6 +26,10 @@ on:
         description: "compile only: stop before the conversion and the package"
         type: boolean
         default: false
+      push_hf:
+        description: "push the model to Hugging Face afterwards (needs the HF_TOKEN secret)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write          # the jobs publish their logs to ci/last-run/ in the branch
@@ -297,6 +301,17 @@ jobs:
           path: build/chat/*.pkg
           compression-level: 0
           if-no-files-found: ignore
+
+      # The model itself, on Hugging Face, so a console can pull it with the app's downloader: the weights, the two
+      # indexes, the card (hf/README.md) and a screenshot. Needs the HF_TOKEN secret; without it, it says so.
+      - name: push the model to Hugging Face
+        if: ${{ inputs.push_hf && success() }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -o pipefail
+          pip install -q huggingface_hub
+          python pc/push_to_hf.py 2>&1 | tee huggingface.txt
 
       - name: what was built
         if: always()
