@@ -337,19 +337,23 @@ Two things the Linux runners needed, both in the scripts:
 
 ## What the last run produced
 
-Run [44173541362](https://github.com/mobjakdebug/garlicornith/actions/runs/44173541362) (branch
-`arena/89d02c3e-garlicornith`, commit `5cef2b8`, all three jobs green — this one with the panel, the extra API
-endpoints and the image pipeline; the previous full run was
-[44155677873](https://github.com/mobjakdebug/garlicornith/actions/runs/44155677873)):
+Run [44271426387](https://github.com/mobjakdebug/garlicornith/actions/runs/44271426387) (branch
+`arena/89d02c3e-garlicornith`, commit `bbe749a`, all three jobs green — the run that first built **both** packages;
+the run before it, [44173541362](https://github.com/mobjakdebug/garlicornith/actions/runs/44173541362), was the one
+with the panel, the extra API endpoints and the image pipeline):
 
 ```
-build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg   4 898 816 000   94fa1a5c…a553e74bc9
-models/ornith-1.5-9b-q4s.bin                          4 641 752 088   a0a1bbdf…37cbe30fc
-models/ornith-1.5-9b-mtp.bin                            212 420 608   e050b25f…72d93cd53
-chat/assets_9b/model.idx                                     11 312   a6487233…4f2f24b15
-chat/assets_9b/mtp.idx                                          588   32a083db…29694eb
-chat/assets_9b/kernels.bin                                    419 052   (rebuilt from shaders/ in the job)
+build/chat/IV0000-PSAI00003_00-PS4LOCALAICHAT03.pkg          4 898 816 000   77579e51…c678c34515
+build/chat/slim/…-PS4LOCALAICHAT03-slim.pkg                     41 156 608   77c79ad7…d87e52ae44
+models/ornith-1.5-9b-q4s.bin                                 4 641 752 088   a0a1bbdf…37cbe30fc
+models/ornith-1.5-9b-mtp.bin                                   212 420 608   e050b25f…72d93cd53
+chat/assets_9b/model.idx                                            11 312   a6487233…4f2f24b15
+chat/assets_9b/mtp.idx                                                 588   32a083db…29694eb
+chat/assets_9b/kernels.bin                                        419 052   (rebuilt from shaders/ in the job)
 ```
+
+(The two packages are stamped with the build's time, so their sha256 changes from run to run; the weights and the
+indexes do not.)
 
 The compile job also runs five test suites on every run — the GGUF reader, the two weight layouts, the API's protocol
 (72 checks), its jobs on a mock engine (165) and the PNG reader (35), the last three with gcc and the sanitizers,
