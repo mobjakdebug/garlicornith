@@ -146,6 +146,9 @@ def main():
     fix_gp4_dirs()
     pkgout = OUT / "slim" if SLIM else OUT   # (its own folder: a slim build next to a full one keeps both)
     pkgout.mkdir(parents=True, exist_ok=True)
+    if not b.WIN and not (b.SSL11 / "libssl.so.1.1").exists():
+        print("warning: no libssl.so.1.1 in", b.SSL11, "-> PkgTool.Core will abort unless the system has one")
+        print("         (run python pc/ci_toolchain.py to fetch it)")
     b.pkgtool("pkg_build", "pkg.gp4", str(pkgout))
     pkg = pkgout / f"{CONTENT_ID}.pkg"
     if SLIM:   # the same app without the weights: it downloads a model on the console instead

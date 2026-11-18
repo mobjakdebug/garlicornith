@@ -15,6 +15,7 @@ the tool rather than assuming a layout, and says what it found. Run it again and
 """
 
 import argparse
+import ctypes
 import os
 import re
 import shutil
@@ -32,10 +33,14 @@ TOOLCHAIN = Path(os.environ.get("GARLIC_TOOLCHAIN") or ROOT / "toolchain")
 OO = TOOLCHAIN / "OpenOrbis" / "PS4Toolchain"
 ZIG_DIR = TOOLCHAIN / "zig"
 SSL11 = TOOLCHAIN / "libssl1.1"          # for PkgTool.Core, see libssl11()
-SSL11_POOLS = ["http://old-releases.ubuntu.com/ubuntu/pool/main/o/openssl/",
+SSL11_POOLS = ["https://old-releases.ubuntu.com/ubuntu/pool/main/o/openssl/",
+               "https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/",
+               "https://security.ubuntu.com/ubuntu/pool/main/o/openssl/",
+               "https://mirrors.kernel.org/ubuntu/pool/main/o/openssl/",
+               "https://deb.debian.org/debian/pool/main/o/openssl/",
+               "http://old-releases.ubuntu.com/ubuntu/pool/main/o/openssl/",
                "http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/",
-               "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/",
-               "http://deb.debian.org/debian/pool/main/o/openssl/"]
+               "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/"]
 
 OO_RELEASE = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz"
 OO_SAMPLES = "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.3/samples-pkg-llvm-18.zip"
@@ -101,6 +106,11 @@ def probe():
             log(f"      {pat:26s} {[p.name for p in (OO / 'samples' / 'hello_world').glob(pat)]}")
     z = ZIG_DIR / "zig"
     log(f"    zig binary {z} {'yes' if z.exists() else 'no'}")
+    lib = SSL11 / "usr" / "lib" / "x86_64-linux-gnu"
+    log(f"    libssl.so.1.1 {'yes' if (lib / 'libssl.so.1.1').exists() else 'no '} {lib}")
+    if (lib / "libssl.so.1.1").exists():
+        log(f"      {[(p.name, p.stat().st_size) for p in lib.iterdir()]}")
+    log(f"    the system's own libssl 1.1 {'yes' if system_ssl() else 'no'}")
 
 
 def libssl11():
@@ -127,11 +137,27 @@ def libssl11():
             deb = download(urllib.parse.urljoin(pool, name), TOOLCHAIN / "downloads" / name)
             lib.mkdir(parents=True, exist_ok=True)
             subprocess.run(["dpkg-deb", "-x", str(deb), str(SSL11)], check=True)
-            log(f"  {name} -> {lib}")
-            return
+            if (lib / "libssl.so.1.1").exists():
+                log(f"  {name} -> {lib}")
+                return
+            log(f"  {name}: extracted, but not into {lib}")
         except Exception as ex:  # noqa: BLE001
             log(f"  {name}: {ex}")
-    log("  no libssl 1.1 anywhere: PkgTool.Core will abort at pkg_build")
+    if system_ssl():
+        log("  no copy of our own, but the system has libssl.so.1.1: PkgTool.Core can use that one")
+        return
+    raise SystemExit("no libssl 1.1 anywhere, and PkgTool.Core cannot build a package without it:\n"
+                     "  it dlopens libssl.so.1.1 (Ubuntu 20.04 and older ship it; 22.04 and newer do not).\n"
+                     "  The pools tried are SSL11_POOLS in pc/ci_toolchain.py.")
+
+
+def system_ssl():
+    """Is there a libssl.so.1.1 on the system's own loader path? Then a copy of ours is not needed."""
+    try:
+        ctypes.CDLL("libssl.so.1.1")
+        return True
+    except OSError:
+        return False
 
 
 def install():

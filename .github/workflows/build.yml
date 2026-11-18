@@ -66,7 +66,9 @@ jobs:
 
       - name: tools (OpenOrbis + Zig)
         timeout-minutes: 20
-        run: python pc/ci_toolchain.py
+        run: |
+          set -o pipefail
+          python pc/ci_toolchain.py 2>&1 | tee toolchain.txt
 
       - name: the GPU kernels, from shaders/ (the C code has to agree with them)
         run: |
@@ -231,7 +233,9 @@ jobs:
 
       - name: tools (OpenOrbis + Zig)
         timeout-minutes: 20
-        run: python pc/ci_toolchain.py
+        run: |
+          set -o pipefail
+          python pc/ci_toolchain.py 2>&1 | tee toolchain.txt
 
       - name: the GPU kernels, from shaders/ (the package carries them)
         run: |
