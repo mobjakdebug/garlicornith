@@ -61,7 +61,7 @@ reported as "no connection"; it now says the repository is not there, and logs t
 
 | Asset | What it is | Size |
 | --- | --- | --- |
-| `station-ai-1.23-slim.pkg` | the app on its own: it downloads a model on the console on first start | **42 205 184 B** (≈ 40 MiB) |
+| `station-ai-1.23-slim.pkg` | the app on its own: it downloads a model on the console on first start | **42 270 720 B** (≈ 40 MiB) |
 | the model | [`officialmobai/station-9b`](https://huggingface.co/officialmobai/station-9b) on Hugging Face — 4-bit weights, the draft head, both indexes | 4 641 752 088 B + 212 420 608 B |
 
 The all-in-one package (**4 900 388 864 B**, weights inside `/app0/models`) is built by the same workflow and is
