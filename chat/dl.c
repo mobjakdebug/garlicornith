@@ -245,13 +245,16 @@ static int net_up(void) {
         dl_code = (unsigned)net_pool;
         return -1;
     }
-    if (ssl_ctx <= 0) ssl_ctx = sceSslInit(SSL_POOLSIZE);
+    // The pools are the SDK's own numbers times four: a modern server's chain (huggingface.co's is Cloudflare's, two
+    // certificates and a long SAN list) needs more room than the 128 KiB the sample sizes for, and TLS that runs out
+    // of memory fails the moment it starts.
+    if (ssl_ctx <= 0) ssl_ctx = sceSslInit(512 * 1024);
     if (ssl_ctx < 0) {
         say("dl: sceSslInit 0x%08X", (unsigned)ssl_ctx);
         dl_code = (unsigned)ssl_ctx;
         return -1;
     }
-    if (http_ctx <= 0) http_ctx = sceHttpInit(net_pool, ssl_ctx, LIBHTTP_POOLSIZE);
+    if (http_ctx <= 0) http_ctx = sceHttpInit(net_pool, ssl_ctx, 256 * 1024);
     if (http_ctx < 0) {
         say("dl: sceHttpInit 0x%08X", (unsigned)http_ctx);
         dl_code = (unsigned)http_ctx;
@@ -807,7 +810,7 @@ int dl_run(void) {
             snprintf(fu, sizeof(fu), DL_RESOLVE, repo, files[i].path);
             snprintf(fp, sizeof(fp), "%s/%s", dir, files[i].path);
             if (dl_file(fu, fp, files[i].size, &done, total)) {
-                dl_progress(1.0f, dl_tr(DL_T_NET));
+                dl_note_code(dl_tr(DL_T_NET), dl_code);   // (with the code: which file, and what said no)
                 return 0;
             }
         }
