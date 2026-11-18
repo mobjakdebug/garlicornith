@@ -1,7 +1,8 @@
 """Station AI brand images, drawn here (no external artwork):
 
   chat/assets/logo.bin     PIMG: "PIMG", u32 count, per image <HHI (width, height, offset of RGBA bytes); the
-                           mark at 48 and 168 px (straight alpha), for the header and the loading / about cards
+                           mark at 40 and 168 px (straight alpha), cropped to its ink, for the header and the
+                           loading / about cards
   chat/sce_sys/icon0.png   512 x 512 home screen icon
   chat/sce_sys/pic1.png    1920 x 1080 home screen background: the mark and the "station ai" wordmark
 
@@ -174,7 +175,9 @@ def background():
 
 
 def main():
-    images = [mark(48, detail=0), mark(168, detail=1)]
+    # Cropped to the ink: the app centres these in a square (the header's tile, the loading card's circles),
+    # and the mark's own box has empty margin on the right, which put the mark over the tile's border.
+    images = [ink(mark(40, detail=0)), ink(mark(168, detail=1))]
     head = b"PIMG" + struct.pack("<I", len(images))
     offset = len(head) + 8 * len(images)
     recs, data = b"", b""
@@ -195,8 +198,8 @@ def main():
     (ROOT / "build").mkdir(exist_ok=True)
     prev.save(ROOT / "build" / "brand_preview.png")
     sheet = backdrop(1200, 420)
-    sheet.paste(mark(48, detail=0), (120, 186), mark(48, detail=0).split()[3])
-    sheet.paste(mark(168, detail=1), (260, 126), mark(168, detail=1).split()[3])
+    sheet.paste(images[0], (120, 186), images[0].split()[3])
+    sheet.paste(images[1], (260, 126), images[1].split()[3])
     sheet.paste(mark(320, detail=2), (520, 50), mark(320, detail=2).split()[3])
     sheet.save(ROOT / "build" / "brand_marks.png")
     print("logo.bin", len(head + recs + data), "bytes; icon0.png", ic.size, "pic1.png", bg.size)

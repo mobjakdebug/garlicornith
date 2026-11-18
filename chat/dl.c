@@ -24,6 +24,7 @@
 #define DL_DIR "/data/models"
 #define DL_PICK "/data/station_model.txt"   // where the last download went, for the next start
 #define DL_LAST "/data/station_hf.txt"      // the repository typed last, offered again
+#define DL_DEFAULT_REPO "officialmobai/station-9b"   // what the downloader offers: the published model, ready to go
 #define DL_API "https://huggingface.co/api/models/%s/tree/main?recursive=1"
 #define DL_RESOLVE "https://huggingface.co/%s/resolve/main/%s"
 #define DL_MAX_FILES 24
@@ -58,7 +59,7 @@ const char* dl_model_dir(void) {
 // ---- the screen ----------------------------------------------------------------------------------------------
 // A progress line (draw_loading draws the bar) and messages that stay a moment. Four languages, as the rest.
 enum { DL_T_CONNECT, DL_T_LIST, DL_T_FILE, DL_T_DONE, DL_T_NOREPO, DL_T_NET, DL_T_NONE, DL_T_CANCEL,
-       DL_T_WHAT, DL_T_INDEX, N_DL };
+       DL_T_WHAT, DL_T_INDEX, DL_T_KBD, DL_T_BADREPO, N_DL };
 static const char* DL_STR[N_DL][N_LANGS] = {
     {"Conectando con huggingface.co…", "Connecting to huggingface.co…", "Conectando a huggingface.co…",
      "Подключение к huggingface.co…"},
@@ -77,6 +78,12 @@ static const char* DL_STR[N_DL][N_LANGS] = {
     {"Descargar un modelo", "Download a model", "Baixar um modelo", "Скачать модель"},
     {"Falta el índice del modelo (model.idx).", "The model's index (model.idx) is missing.",
      "Falta o índice do modelo (model.idx).", "Нет индекса модели (model.idx)."},
+    {"Sin teclado: se usa %s.", "The keyboard is not available: using %s.", "Sem teclado: uso %s.",
+     "Клавиатура недоступна: беру %s."},
+    {"Escribe usuario/modelo, por ejemplo officialmobai/station-9b.",
+     "Type user/model, for example officialmobai/station-9b.",
+     "Escreva usuário/modelo, por exemplo officialmobai/station-9b.",
+     "Введите пользователь/модель, например officialmobai/station-9b."},
 };
 
 static const char* dl_tr(int id) { return DL_STR[id][ui_lang >= 0 && ui_lang < N_LANGS ? ui_lang : LANG_EN]; }
@@ -96,20 +103,29 @@ static void dl_note(const char* msg) {
 }
 
 // ---- the keyboard: the repository's name ---------------------------------------------------------------------
+// The console's own keyboard, set up the way the dialog's own samples do it: a zeroed setting, the languages the
+// console carries, the buffer the player types into, then GetStatus until the dialog stops. What the first version
+// did instead is why nothing could be typed: a status of NONE was taken for "it is over" after three hundred frames,
+// so the dialog was terminated (sceImeDialogTerm) before the system had drawn it, and every run ended in
+// "Cancelled". It now waits for the dialog, and says so in the log when the firmware refuses to open one at all.
 static void dl_wide(const char* s, wchar_t* out, int max) {   // (the field is ASCII: one byte a character)
     int i = 0;
     for (; s[i] && i < max - 1; i++) out[i] = (wchar_t)(unsigned char)s[i];
     out[i] = 0;
 }
 
+// 1 = a name was typed (out holds it), 0 = the player cancelled, -1 = there is no keyboard to type on.
 static int dl_ask(char* out, int max) {
-    static wchar_t buf[257], placeholder[120];
+    static wchar_t buf[257], placeholder[160], title[64];
     memset(buf, 0, sizeof(buf));
-    dl_wide(dl_tr(DL_T_NOREPO), placeholder, 120);
+    dl_wide(dl_tr(DL_T_NOREPO), placeholder, 160);
+    dl_wide("Station AI", title, 64);
+    dl_wide(out, buf, 256);   // what is already known arrives typed: SEND accepts it as it is
     OrbisImeDialogSetting s;
     memset(&s, 0, sizeof(s));
-    s.userId = ui_user_id();
+    s.userId = (uint32_t)ui_user_id();
     s.type = ORBIS_TYPE_DEFAULT;
+    s.supportedLanguages = 0x0001FFFFull;   // the console's seventeen keyboard languages (ORBIS_IME_LANG_*)
     s.enterLabel = ORBIS_BUTTON_LABEL_SEND;
     s.maxTextLength = 256;
     s.inputTextBuffer = buf;
@@ -117,30 +133,40 @@ static int dl_ask(char* out, int max) {
     s.posy = SCREEN_H / 2;
     s.horizontalAlignment = ORBIS_H_CENTER;
     s.verticalAlignment = ORBIS_V_CENTER;
-    s.title = L"Station AI";
+    s.title = title;
     s.placeholder = placeholder;
-    if (sceImeDialogInit(&s, NULL) < 0) {
-        say("dl: the keyboard did not open");
-        return 0;
+    int rc = sceImeDialogInit(&s, NULL);
+    if (rc != 0) {
+        say("dl: sceImeDialogInit 0x%08X (no keyboard)", (unsigned)rc);
+        return -1;
     }
-    int frames = 0, running = 0;
+    int running = 0, ticks = 0;
     for (;;) {
         OrbisDialogStatus st = sceImeDialogGetStatus();
         if (st == ORBIS_DIALOG_STATUS_STOPPED) break;
-        if (st == ORBIS_DIALOG_STATUS_RUNNING) running = 1;
-        if (st == ORBIS_DIALOG_STATUS_NONE && (running || ++frames > 300)) break;
-        dl_progress(0.0f, dl_tr(DL_T_WHAT));
+        if (st == ORBIS_DIALOG_STATUS_RUNNING) {
+            running = 1;   // (from here on the dialog is what the player looks at: nothing more is drawn under it)
+        } else if (!running) {
+            if (++ticks > 2000) {   // twenty seconds and it never came up: this screen is not what is waited on
+                say("dl: the keyboard never appeared");
+                sceImeDialogTerm();
+                return -1;
+            }
+            if (ticks % 5 == 0) dl_progress(0.0f, dl_tr(DL_T_WHAT));
+        }
+        sceKernelUsleep(10000);
     }
     OrbisDialogResult res;
     memset(&res, 0, sizeof(res));
-    sceImeDialogGetResult(&res);
+    rc = sceImeDialogGetResult(&res);
     sceImeDialogTerm();
+    say("dl: keyboard: end status %d (get 0x%08X)", (int)res.endstatus, (unsigned)rc);
     if (res.endstatus != ORBIS_DIALOG_OK) return 0;
     int n = 0;
     for (int i = 0; buf[i] && n < max - 1; i++)
         if (buf[i] > 32 && buf[i] < 127) out[n++] = (char)buf[i];
     out[n] = 0;
-    return n > 0;
+    return n > 0 ? 1 : 0;
 }
 
 // ---- the console's HTTP client -------------------------------------------------------------------------------
@@ -566,7 +592,13 @@ int dl_run(void) {
         snprintf(repo, sizeof(repo), "%s", last);
         free(last);
     }
-    if (!dl_ask(repo, sizeof(repo))) {
+    if (!repo[0]) snprintf(repo, sizeof(repo), "%s", DL_DEFAULT_REPO);   // out of the box: the published model
+    int ask = dl_ask(repo, sizeof(repo));
+    if (ask < 0) {   // no keyboard: go on with the repository already known rather than send the player away
+        char line[300];
+        snprintf(line, sizeof(line), dl_tr(DL_T_KBD), repo);
+        dl_note(line);
+    } else if (!ask) {
         dl_note(dl_tr(DL_T_CANCEL));
         return 0;
     }
@@ -578,7 +610,7 @@ int dl_run(void) {
     while (repo[0] && repo[strlen(repo) - 1] == '/') repo[strlen(repo) - 1] = 0;
     say("dl: repository \"%s\"", repo);
     if (!strchr(repo, '/')) {
-        dl_note(dl_tr(DL_T_NONE));
+        dl_note(dl_tr(DL_T_BADREPO));
         return 0;
     }
     int fd = open(DL_LAST, O_WRONLY | O_CREAT | O_TRUNC, 0666);
@@ -606,7 +638,11 @@ int dl_run(void) {
     }
     say("dl: %d files, %llu bytes%s", nf, (unsigned long long)total, err ? " (the request failed)" : "");
     if (!nf) {
-        dl_note(dl_tr(err ? DL_T_NET : DL_T_NONE));
+        // A 4xx from the API (a name that is not there, or a repository that is not public) is not a network fault:
+        // the two used to be the same message, which sent the player looking at the router.
+        int missing = err < -400 && err > -600;
+        say("dl: nothing to fetch (%s)", missing ? "the repository is not there" : err ? "the request failed" : "no .bin");
+        dl_note(dl_tr(missing || !err ? DL_T_NONE : DL_T_NET));
         return 0;
     }
     int have_idx = 0;
